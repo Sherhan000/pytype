@@ -1,0 +1,15 @@
+{
+  "name": "pytype",
+  "short_name": "pytype",
+  "description": "Тренажёр скоростной печати кода на Python",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#161936",
+  "theme_color": "#161936",
+  "lang": "ru",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

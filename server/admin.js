@@ -38,6 +38,10 @@ export default function admin(app, { adm, modr, io }) {
     app.put(`/api/admin/${t}/:id`, adm, async (req, res) => {
       const b = pick(req.body, f), k = Object.keys(b)
       if (!k.length) return res.status(400).json({ e: 'Пустые данные' })
+      if (t === 'tasks' && 'code' in b) {
+        const old = await db.one('select code from tasks where id=$1', [+req.params.id])
+        if (old && old.code !== b.code) await db.q('delete from ghosts where task_id=$1', [+req.params.id])
+      }
       const r = await db.one(`update ${t} set ${k.map((x, i) => `${x}=$${i + 1}`).join(',')} where id=$${k.length + 1} returning *`, [...k.map(x => b[x]), +req.params.id])
       res.json({ row: r })
     })
@@ -120,17 +124,32 @@ export default function admin(app, { adm, modr, io }) {
     res.json({ ok: 1 })
   })
 
+  const KP = {
+    type: `Придумай рабочий фрагмент кода на Python на {lines} строк по этой теме для скоростной печати. Без комментариев и докстрингов, без input(), код должен запускаться и что-то печатать, отступ 4 пробела.
+Верни JSON {"title": "короткое название по-русски", "descr": "одно предложение по-русски, чему учит", "code": "код"}`,
+    quiz: `Придумай вопрос «что выведет этот код?». Код на Python 4-12 строк, детерминированный (без random, времени и input), печатает одну короткую строку. Дай 4 варианта ответа, ровно один верный, остальные правдоподобные ошибки новичка. Внимательно проверь вывод, выполнив код в уме по шагам.
+Верни JSON {"title": "...", "descr": "одно предложение по-русски", "code": "код", "q": "Что выведет этот код?", "options": ["вариант 1", "вариант 2", "вариант 3", "вариант 4"], "answer": индекс_верного_от_0, "explain": "короткое объяснение по-русски, почему так"}`,
+    fix: `Придумай задание «найди и исправь ошибку». Рабочий код на Python 6-15 строк, в котором ровно одна ошибка (логическая или синтаксическая, типичная для новичка). Исправление должно менять одну строку.
+Верни JSON {"title": "...", "descr": "одно предложение по-русски, что код должен делать", "code": "код с ошибкой", "fixed": "тот же код, но исправленный", "hint": "подсказка по-русски, не раскрывающая ответ", "explain": "в чём была ошибка, по-русски"}`,
+    fill: `Придумай задание «допиши пропуски». Рабочий код на Python 6-15 строк. Замени 2-4 ключевых места (ключевое слово, имя функции, оператор или короткое выражение) на пропуски в виде {{правильный_ответ}}. Если подходит несколько ответов, перечисли их через |, например {{+=|= total +}}.
+Верни JSON {"title": "...", "descr": "одно предложение по-русски", "code": "код с пропусками {{...}}", "hint": "подсказка по-русски", "explain": "короткое объяснение по-русски"}`
+  }
+
   app.post('/api/admin/ai-task', adm, async (req, res) => {
     const topic = String(req.body?.topic || 'циклы').slice(0, 200), lvl = Math.min(3, Math.max(1, +req.body?.lvl || 1))
+    const kind = KP[req.body?.kind] ? req.body.kind : 'type'
     const lines = [0, '10-15', '15-25', '25-40'][lvl]
     const txt = await ask([
-      { role: 'system', content: 'Ты составляешь задания для тренажёра скоростной печати кода на Python. Отвечай только JSON.' },
-      { role: 'user', content: `Тема: ${topic}. Сложность ${lvl} из 3. Придумай рабочий фрагмент кода на Python на ${lines} строк по этой теме. ` +
-        'Требования к коду: идентификаторы и строки на английском, без комментариев и докстрингов, без input(), код должен запускаться и что-то печатать, отступ 4 пробела. ' +
-        'Верни JSON вида {"title": "короткое название по-русски", "descr": "одно предложение по-русски, чему учит", "code": "код"}' }
-    ], { json: true, max: 1600, temp: 0.7 })
+      { role: 'system', content: 'Ты составляешь задания для тренажёра программирования на Python. Идентификаторы и строки в коде на английском. Отвечай только JSON.' },
+      { role: 'user', content: `Тема: ${topic}. Сложность ${lvl} из 3. ` + KP[kind].replace('{lines}', lines) }
+    ], { json: true, max: 1800, temp: 0.7 })
     let j
     try { j = JSON.parse(txt) } catch (e) { return res.status(500).json({ e: 'ИИ вернул что-то непонятное, попробуй ещё раз' }) }
-    res.json({ title: String(j.title || topic), descr: String(j.descr || ''), code: String(j.code || '').replace(/\t/g, '    ') })
+    const code = String(j.code || '').replace(/\t/g, '    ')
+    const meta = {}
+    if (kind === 'quiz') Object.assign(meta, { q: String(j.q || 'Что выведет этот код?'), options: Array.isArray(j.options) ? j.options.map(String) : [], answer: Math.max(0, +j.answer || 0), explain: String(j.explain || '') })
+    if (kind === 'fix') Object.assign(meta, { fixed: String(j.fixed || '').replace(/\t/g, '    '), hint: String(j.hint || ''), explain: String(j.explain || '') })
+    if (kind === 'fill') Object.assign(meta, { hint: String(j.hint || ''), explain: String(j.explain || '') })
+    res.json({ title: String(j.title || topic), descr: String(j.descr || ''), code, kind, meta: JSON.stringify(meta, null, 2) })
   })
 }

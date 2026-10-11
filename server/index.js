@@ -15,6 +15,10 @@ import { cfg, loadCfg, pubCfg, lim, pu, expChars, uSel } from './util.js'
 import { ask, quota, left, SYS } from './ai.js'
 import chat from './chat.js'
 import admin from './admin.js'
+import duel from './duel.js'
+import { setIo, bump, check, feed, note, questList, claim, feedList, react, ACH, lvl } from './social.js'
+import { initPush, pushKey, remindStreaks } from './push.js'
+import * as tourn from './tourn.js'
 
 const dir = path.dirname(fileURLToPath(import.meta.url))
 const PORT = process.env.PORT || 3000
@@ -24,6 +28,9 @@ const ADMINS = String(process.env.ADMIN || '').toLowerCase().split(',').map(s =>
 await db.ex(schema)
 await seed()
 await loadCfg()
+await initPush().catch(e => console.error('push init:', e.message))
+
+process.on('unhandledRejection', e => console.error('unhandled:', e))
 
 let SECRET = process.env.JWT_SECRET
 if (!SECRET) {
@@ -38,6 +45,7 @@ if (!SECRET) {
 const app = express()
 const srv = http.createServer(app)
 const io = new Server(srv, { cors: { origin: false }, maxHttpBufferSize: 1e4 })
+setIo(io)
 
 app.set('trust proxy', 1)
 app.disable('x-powered-by')
@@ -74,6 +82,7 @@ async function getUser(tok) {
 }
 
 const who = c => getUser(String(c || '').split(';').map(s => s.trim()).find(s => s.startsWith('tk='))?.slice(3))
+io.use(async (s, next) => { try { s.data.u = await who(s.handshake.headers.cookie) } catch (e) { s.data.u = null } next() })
 
 app.use(async (req, res, next) => {
   req.u = null
@@ -97,7 +106,8 @@ function setTok(res, u) {
 app.get('/healthz', (req, res) => res.send('ok'))
 
 app.get('/api/me', async (req, res) => {
-  res.json({ u: pu(req.u), cfg: pubCfg(), ai_left: req.u ? await left(req.u) : 0 })
+  const unread = req.u ? (await db.one('select count(*)::int n from notes where user_id=$1 and not read', [req.u.id])).n : 0
+  res.json({ u: pu(req.u), cfg: pubCfg(), ai_left: req.u ? await left(req.u) : 0, unread })
 })
 
 app.post('/api/register', async (req, res) => {
@@ -109,8 +119,15 @@ app.post('/api/register', async (req, res) => {
   if (await db.one('select 1 from users where lower(name)=lower($1)', [name])) return res.status(400).json({ e: 'Такой ник уже занят' })
   const first = (await db.one('select count(*)::int n from users')).n === 0
   const role = first || ADMINS.includes(name.toLowerCase()) ? 'admin' : 'user'
-  const u = await db.one('insert into users(name,pass,role,coins) values($1,$2,$3,$4) returning id', [name, await bcrypt.hash(pass, 10), role, 50])
+  let u
+  try {
+    u = await db.one('insert into users(name,pass,role,coins) values($1,$2,$3,$4) returning id', [name, await bcrypt.hash(pass, 10), role, 50])
+  } catch (e) {
+    if (e.code === '23505') return res.status(400).json({ e: 'Такой ник уже занят' })
+    throw e
+  }
   setTok(res, u)
+  feed(u.id, 'join', {}).catch(() => {})
   res.json({ u: pu(await db.one(uSel + ' where id=$1', [u.id])) })
 })
 
@@ -134,6 +151,7 @@ app.post('/api/logout', (req, res) => {
 })
 
 app.post('/api/me/pass', need, async (req, res) => {
+  if (!lim('pass' + req.u.id, 6, 600e3)) return res.status(429).json({ e: 'Слишком много попыток, подожди 10 минут' })
   const u = await db.one('select pass from users where id=$1', [req.u.id])
   if (!(await bcrypt.compare(String(req.body?.old || ''), u.pass))) return res.status(400).json({ e: 'Старый пароль не подходит' })
   const p = String(req.body?.pass || '')
@@ -155,6 +173,7 @@ app.post('/api/daily', need, async (req, res) => {
     daily_at = current_date
     where id=$1 and (daily_at is null or daily_at < current_date) returning coins, streak`, [req.u.id, cfg.daily])
   if (!r) return res.status(400).json({ e: 'Бонус уже забран, приходи завтра' })
+  check(req.u.id).catch(() => {})
   res.json({ coins: r.coins, streak: r.streak, gain: cfg.daily + Math.min(r.streak - 1, 6) * 5 })
 })
 
@@ -181,9 +200,30 @@ app.get('/api/leagues', async (req, res) => {
     return { ...l, open: o, cup: C.has(l.id), tasks: ts.filter(t => t.league_id === l.id).map(t => ({ ...t, done: D[t.id] || null })) }
   })
   const free = ts.filter(t => !t.league_id)
-  if (free.length) out.push({ id: 0, name: 'Разное', icon: '🧩', color: '#8a92a6', open: true, cup: false, reward: 0, tasks: free.map(t => ({ ...t, done: D[t.id] || null })) })
+  if (free.length) out.push({ id: 0, name: 'Головоломки', icon: '🧩', color: '#8a92a6', open: true, cup: false, reward: 0, tasks: free.map(t => ({ ...t, done: D[t.id] || null })) })
   res.json({ leagues: out })
 })
+
+const norm = s => String(s ?? '').replace(/\r/g, '').split('\n').map(l => l.replace(/\s+$/, '')).join('\n').replace(/^\n+|\n+$/g, '')
+const loose = s => norm(s).split('\n').filter(l => l.trim()).map(l => l.match(/^\s*/)[0].length + ':' + l.trim().replace(/\s+/g, '')).join('\n')
+const outn = s => norm(s).split('\n').map(l => l.trim().replace(/\s+/g, ' ')).join('\n')
+const BL = /\{\{([^{}\n]+?)\}\}/g
+
+function pubTask(t) {
+  if (!t || t.kind === 'type') return t
+  const m = t.meta || {}
+  if (t.kind === 'quiz') {
+    const opts = Array.isArray(m.options) ? m.options.map(String) : null
+    return { ...t, meta: { q: String(m.q || ''), options: opts, multi: !opts && String(m.answer ?? '').includes('\n') } }
+  }
+  if (t.kind === 'fix') return { ...t, meta: { hint: String(m.hint || '') } }
+  if (t.kind === 'fill') {
+    const w = []
+    const code = String(t.code).replace(BL, (_, a) => { w.push(a.split('|')[0].trim().length); return '{{' + (w.length - 1) + '}}' })
+    return { ...t, code, meta: { w, hint: String(m.hint || '') } }
+  }
+  return { ...t, meta: {} }
+}
 
 app.get('/api/tasks/:id', async (req, res) => {
   const t = await db.one('select * from tasks where id=$1 and active', [+req.params.id])
@@ -191,26 +231,76 @@ app.get('/api/tasks/:id', async (req, res) => {
   if (!(await opened(req.u, t.league_id))) return res.status(403).json({ e: 'Эта лига ещё закрыта. Получи кубок предыдущей лиги' })
   const lg = t.league_id ? await db.one('select id,name,icon,color from leagues where id=$1', [t.league_id]) : null
   const d = req.u ? await db.one('select stars,best_wpm,best_acc from done where user_id=$1 and task_id=$2', [req.u.id, t.id]) : null
-  res.json({ task: t, league: lg, done: d })
+  res.json({ task: pubTask(t), league: lg, done: d })
 })
 
 app.post('/api/run/start', need, async (req, res) => {
   if (!lim('run' + req.u.id, 40, 60000)) return res.status(429).json({ e: 'Слишком часто' })
-  let tid = req.body?.task ? +req.body.task : null
-  if (tid) {
-    const t = await db.one('select id,league_id from tasks where id=$1 and active', [tid])
+  let tid = req.body?.task ? +req.body.task : null, trn = null
+  if (req.body?.tourn) {
+    const t = await tourn.current()
+    if (!t) return res.status(404).json({ e: 'Турнир сейчас не проводится' })
+    trn = t.id; tid = null
+  } else if (tid) {
+    const t = await db.one("select id,league_id from tasks where id=$1 and active and kind='type'", [tid])
     if (!t || !(await opened(req.u, t.league_id))) return res.status(403).json({ e: 'Задание недоступно' })
   }
   const id = crypto.randomUUID()
-  await db.q('insert into runs(id,user_id,task_id) values($1,$2,$3)', [id, req.u.id, tid])
+  await db.q('insert into runs(id,user_id,task_id,tourn) values($1,$2,$3,$4)', [id, req.u.id, tid, trn])
   if (Math.random() < 0.05) db.q("delete from runs where started_at < now() - interval '1 day'").catch(() => {})
   res.json({ run: id })
 })
 
+async function grant(u, task, stars, wpm, acc) {
+  let gc = 0, gx = 0, newStars = 0, firstPass = false, cup = null
+  const ins = await db.one('insert into done(user_id,task_id,best_wpm,best_acc,stars) values($1,$2,$3,$4,$5) on conflict do nothing returning stars', [u.id, task.id, wpm, acc, stars])
+  if (ins) {
+    firstPass = true; newStars = stars; gc = task.coins; gx = task.xp
+  } else {
+    const o = await db.one(`with o as (select stars from done where user_id=$1 and task_id=$2 for update)
+      update done d set best_wpm=greatest(d.best_wpm,$3), best_acc=greatest(d.best_acc,$4), stars=greatest(d.stars,$5)
+      from o where d.user_id=$1 and d.task_id=$2 returning o.stars old`, [u.id, task.id, wpm, acc, stars])
+    const old = o?.old ?? stars
+    if (stars > old) { gc = Math.round(task.coins * 0.5 * (stars - old)); newStars = stars - old }
+    gx = Math.max(1, Math.round(task.xp / 5))
+  }
+  if (task.league_id) {
+    const lg = await db.one(`select l.*,
+      (select count(*)::int from tasks t where t.league_id=l.id and t.active) total,
+      (select count(*)::int from done d join tasks t on t.id=d.task_id where d.user_id=$2 and t.league_id=l.id and t.active) got
+      from leagues l where l.id=$1`, [task.league_id, u.id])
+    if (lg && lg.total > 0 && lg.got >= lg.total) {
+      const c = await db.one('insert into cups(user_id,league_id) values($1,$2) on conflict do nothing returning league_id', [u.id, lg.id])
+      if (c) {
+        cup = { id: lg.id, name: lg.name, icon: lg.icon, color: lg.color, reward: lg.reward }
+        gc += lg.reward
+      }
+    }
+  }
+  return { gc, gx, newStars, firstPass, cup }
+}
+
+async function after(u, task, g, stars) {
+  if (g.firstPass) await feed(u.id, 'task', { t: task.title, s: stars })
+  else if (g.newStars && stars === 3) await feed(u.id, 'task3', { t: task.title })
+  if (g.cup) await feed(u.id, 'cup', { n: g.cup.name, i: g.cup.icon })
+}
+
+async function saveGhost(uid, tid, wpm, ms, tl, step) {
+  step = Math.round(+step || 0)
+  if (!Array.isArray(tl) || tl.length < 2 || tl.length > 3001 || step < 100 || step > 2000) return
+  const a = tl.map(x => Math.max(0, Math.min(20000, x | 0)))
+  const dur = (a.length - 1) * step
+  if (Math.abs(dur - ms) > Math.max(1500, ms * 0.25)) return
+  await db.q(`insert into ghosts(user_id,task_id,wpm,ms,step,tl) values($1,$2,$3,$4,$5,$6)
+    on conflict(user_id,task_id) do update set wpm=excluded.wpm, ms=excluded.ms, step=excluded.step, tl=excluded.tl, at=now()
+    where excluded.wpm > ghosts.wpm`, [uid, tid, wpm, Math.round(ms), step, JSON.stringify(a)])
+}
+
 app.post('/api/run/finish', need, async (req, res) => {
   const b = req.body || {}, u = req.u
   const r = await db.one(`update runs set used=true where id=$1 and user_id=$2 and not used
-    and started_at > now() - interval '3 hours' returning task_id, extract(epoch from now() - started_at) * 1000 as el`, [String(b.run || ''), u.id])
+    and started_at > now() - interval '3 hours' returning task_id, tourn, extract(epoch from now() - started_at) * 1000 as el`, [String(b.run || ''), u.id])
   if (!r) return res.status(400).json({ e: 'Сессия устарела, результат не засчитан' })
   const chars = Math.max(0, Math.min(50000, b.chars | 0))
   const keys = Math.max(chars, Math.min(100000, b.keys | 0))
@@ -221,8 +311,19 @@ app.post('/api/run/finish', need, async (req, res) => {
   const acc = keys ? Math.round((keys - errs) / keys * 100) : 0
   if (wpm > 220) return res.status(400).json({ e: 'Подозрительно быстро, результат не засчитан' })
 
-  let task = null, passed = false, stars = 0, gc = 0, gx = 0, cup = null, why = []
-  if (r.task_id) {
+  let task = null, passed = false, stars = 0, gc = 0, gx = 0, why = [], g = null, tr = null
+  if (r.tourn) {
+    const tt = await db.one('select * from tourn where id=$1', [r.tourn])
+    if (tt) {
+      if (chars < expChars(tt.code) * 0.95) why.push('код набран не полностью')
+      if (lft) why.push('остались неисправленные ошибки')
+      if (acc < 85) why.push('точность ниже 85%')
+      if (tt.prized) why.push('турнир уже закончился')
+      passed = !why.length
+      if (passed) tr = await tourn.enter(tt.id, u.id, wpm, acc, Math.round(t))
+      if (acc >= 75) gx = Math.floor(chars / 25)
+    }
+  } else if (r.task_id) {
     task = await db.one('select * from tasks where id=$1', [r.task_id])
     if (task) {
       const ex = expChars(task.code)
@@ -233,29 +334,9 @@ app.post('/api/run/finish', need, async (req, res) => {
       passed = !why.length
       if (passed) {
         stars = 1 + (wpm >= task.min_wpm * 1.5 && acc >= 95 ? 1 : 0) + (wpm >= Math.max(task.min_wpm * 2, 20) && acc >= 98 ? 1 : 0)
-        const d = await db.one('select * from done where user_id=$1 and task_id=$2', [u.id, task.id])
-        if (!d) {
-          gc = task.coins
-          gx = task.xp
-          await db.q('insert into done(user_id,task_id,best_wpm,best_acc,stars) values($1,$2,$3,$4,$5)', [u.id, task.id, wpm, acc, stars])
-        } else {
-          if (stars > d.stars) gc = Math.round(task.coins * 0.5 * (stars - d.stars))
-          gx = Math.max(1, Math.round(task.xp / 5))
-          await db.q('update done set best_wpm=greatest(best_wpm,$3),best_acc=greatest(best_acc,$4),stars=greatest(stars,$5) where user_id=$1 and task_id=$2', [u.id, task.id, wpm, acc, stars])
-        }
-        if (task.league_id) {
-          const lg = await db.one(`select l.*,
-            (select count(*)::int from tasks t where t.league_id=l.id and t.active) total,
-            (select count(*)::int from done d join tasks t on t.id=d.task_id where d.user_id=$2 and t.league_id=l.id and t.active) got
-            from leagues l where l.id=$1`, [task.league_id, u.id])
-          if (lg && lg.total > 0 && lg.got >= lg.total) {
-            const ins = await db.one('insert into cups(user_id,league_id) values($1,$2) on conflict do nothing returning league_id', [u.id, lg.id])
-            if (ins) {
-              cup = { id: lg.id, name: lg.name, icon: lg.icon, color: lg.color, reward: lg.reward }
-              gc += lg.reward
-            }
-          }
-        }
+        g = await grant(u, task, stars, wpm, acc)
+        gc = g.gc; gx = g.gx
+        await saveGhost(u.id, task.id, wpm, t, b.tl, b.step).catch(e => console.error('ghost', e.message))
       }
     }
   } else if (acc >= 75 && chars >= 30) {
@@ -278,10 +359,65 @@ app.post('/api/run/finish', need, async (req, res) => {
   const emk = Object.entries(em).sort((a, b) => b[1] - a[1]).slice(0, 60)
   const best = passed || (!task && chars >= 150 && acc >= 90) ? wpm : 0
   const nb = best > u.best_wpm
-  await db.q('update users set coins=coins+$2, xp=xp+$3, best_wpm=greatest(best_wpm,$4), emap=$5 where id=$1', [u.id, gc, gx, best, JSON.stringify(Object.fromEntries(emk))])
+  const nu0 = await db.one('update users set coins=coins+$2, xp=xp+$3, best_wpm=greatest(best_wpm,$4), emap=$5 where id=$1 returning xp', [u.id, gc, gx, best, JSON.stringify(Object.fromEntries(emk))])
   await db.q('insert into results(user_id,task_id,wpm,acc,ms,chars,errs,xp,passed) values($1,$2,$3,$4,$5,$6,$7,$8,$9)', [u.id, r.task_id, wpm, acc, Math.round(t), chars, errs, gx, passed])
+  const inc = { runs: 1, chars }
+  if (acc >= 95 && chars >= 60) inc.acc95 = 1
+  if (wpm >= 30 && chars >= 60) inc.wpm30 = 1
+  if (passed && task) inc.tasks = 1
+  if (g?.newStars) inc.stars = g.newStars
+  await bump(u.id, inc)
+  if (g) await after(u, task, g, stars)
+  if (nb && best >= 25) await feed(u.id, 'record', { w: best })
+  if (lvl(nu0.xp) > lvl(nu0.xp - gx)) await feed(u.id, 'level', { l: lvl(nu0.xp) })
+  const ach = await check(u.id, passed && acc === 100 && task ? ['clean'] : [])
   const nu = await db.one(uSel + ' where id=$1', [u.id])
-  res.json({ wpm, acc, passed, stars, why, coins: gc, xp: gx, cup, best: nb, u: pu(nu) })
+  res.json({ wpm, acc, passed, stars, why, coins: gc, xp: gx, cup: g?.cup || null, best: nb, ach, tourn: tr, u: pu(nu) })
+})
+
+app.post('/api/tasks/:id/answer', need, async (req, res) => {
+  if (!lim('ans' + req.u.id, 20, 60000)) return res.status(429).json({ e: 'Слишком часто, подожди минуту' })
+  const t = await db.one("select * from tasks where id=$1 and active and kind<>'type'", [+req.params.id])
+  if (!t) return res.status(404).json({ e: 'Задание не найдено' })
+  if (!(await opened(req.u, t.league_id))) return res.status(403).json({ e: 'Задание недоступно' })
+  const m = t.meta || {}, a = req.body?.answer
+  let ok = false, bad = []
+  if (t.kind === 'quiz') {
+    if (Array.isArray(m.options)) ok = a !== '' && a != null && Number(a) === Number(m.answer)
+    else ok = [m.answer, ...(Array.isArray(m.accept) ? m.accept : [])].filter(x => x != null).some(x => outn(x) === outn(a))
+  } else if (t.kind === 'fix') {
+    ok = [m.fixed, ...(Array.isArray(m.accept) ? m.accept : [])].filter(Boolean).some(x => loose(x) === loose(a))
+  } else if (t.kind === 'fill') {
+    const ans = [...String(t.code).matchAll(BL)].map(x => x[1].split('|').map(y => y.trim().replace(/\s+/g, '')))
+    const g = Array.isArray(a) ? a : []
+    bad = ans.map((alts, i) => alts.includes(String(g[i] ?? '').trim().replace(/\s+/g, '')) ? -1 : i).filter(i => i >= 0)
+    ok = ans.length > 0 && !bad.length
+  }
+  if (!ok) {
+    const r = await db.one('insert into att(user_id,task_id,n) values($1,$2,1) on conflict(user_id,task_id) do update set n=att.n+1 returning n', [req.u.id, t.id])
+    return res.json({ ok: false, tries: r.n, bad })
+  }
+  const r = await db.one('delete from att where user_id=$1 and task_id=$2 returning n', [req.u.id, t.id])
+  const n = r?.n || 0, stars = n === 0 ? 3 : n === 1 ? 2 : 1
+  const g = await grant(req.u, t, stars, 0, 100)
+  const nu0 = await db.one('update users set coins=coins+$2, xp=xp+$3 where id=$1 returning xp', [req.u.id, g.gc, g.gx])
+  await bump(req.u.id, { tasks: 1, stars: g.newStars })
+  await after(req.u, t, g, stars)
+  if (lvl(nu0.xp) > lvl(nu0.xp - g.gx)) await feed(req.u.id, 'level', { l: lvl(nu0.xp) })
+  const ach = await check(req.u.id, n === 0 ? ['clean'] : [])
+  res.json({ ok: true, stars, coins: g.gc, xp: g.gx, cup: g.cup, ach, explain: String(m.explain || ''), u: pu(await db.one(uSel + ' where id=$1', [req.u.id])) })
+})
+
+app.get('/api/ghost/:id', async (req, res) => {
+  const tid = +req.params.id
+  const sel = 'select g.user_id,g.wpm,g.ms,g.step,g.tl,u.name,u.avatar from ghosts g join users u on u.id=g.user_id'
+  let g
+  if (req.query.who === 'me') {
+    if (!req.u) return res.status(401).json({ e: 'Нужно войти' })
+    g = await db.one(sel + ' where g.user_id=$1 and g.task_id=$2', [req.u.id, tid])
+  } else g = await db.one(sel + ' where g.task_id=$1 and not u.banned order by g.wpm desc, g.at limit 1', [tid])
+  if (!g) return res.status(404).json({ e: req.query.who === 'me' ? 'Сначала пройди это задание, и твой заход станет призраком' : 'На этом задании ещё нет записей' })
+  res.json({ name: g.name, avatar: g.avatar, wpm: g.wpm, ms: g.ms, step: g.step, tl: g.tl, me: g.user_id === req.u?.id })
 })
 
 app.get('/api/top', async (req, res) => {
@@ -290,7 +426,12 @@ app.get('/api/top', async (req, res) => {
     (select count(*)::int from cups c where c.user_id=u.id) cups,
     (select l.icon from cups c join leagues l on l.id=c.league_id where c.user_id=u.id order by l.ord desc limit 1) lg`
   let rows
-  if (by === 'week') {
+  if (by === 'friends') {
+    if (!req.u) return res.json({ rows: [] })
+    rows = await db.q(`select * from (${base} from users u where u.id=$1 or u.id in (select followee from follows where follower=$1)) x order by xp desc limit 100`, [req.u.id])
+  } else if (by === 'duel') {
+    rows = await db.q(`select * from (${base}, u.duel_w score from users u where not u.banned and u.duel_w > 0) x order by duel_w desc, xp desc limit 50`)
+  } else if (by === 'week') {
     rows = await db.q(`${base}, w.s::int score from users u join (select user_id, sum(xp) s from results where created_at > now() - interval '7 days' group by user_id) w on w.user_id=u.id where not u.banned order by w.s desc limit 50`)
   } else {
     const o = { wpm: 'best_wpm desc, xp desc', cups: 'cups desc, xp desc' }[by] || 'xp desc'
@@ -300,7 +441,7 @@ app.get('/api/top', async (req, res) => {
 })
 
 app.get('/api/u/:name', async (req, res) => {
-  const u = await db.one(`select id,name,role,xp,best_wpm,avatar,frame,title,ncolor,bio,streak,created_at,seen_at,emap,
+  const u = await db.one(`select id,name,role,xp,best_wpm,avatar,frame,title,ncolor,bio,(case when daily_at >= current_date - 1 then streak else 0 end) streak,created_at,seen_at,emap,duel_w,duel_l,
     (select count(*)::int + 1 from users x where x.xp > users.xp and not x.banned) rank
     from users where lower(name)=lower($1) and not banned`, [String(req.params.name)])
   if (!u) return res.status(404).json({ e: 'Пользователь не найден' })
@@ -312,7 +453,11 @@ app.get('/api/u/:name', async (req, res) => {
     from results where user_id=$1`, [u.id])
   const own = req.u?.id === u.id
   if (!own) delete u.emap
-  res.json({ u, cups, recent, st: { ...st, ms: +st.ms }, own })
+  const fl = await db.one('select (select count(*)::int from follows where followee=$1) fans, (select count(*)::int from follows where follower=$1) subs', [u.id])
+  const isf = req.u && !own ? !!(await db.one('select 1 from follows where follower=$1 and followee=$2', [req.u.id, u.id])) : false
+  const got = await db.q('select code, at from ach where user_id=$1', [u.id])
+  const ach = ACH.map(a => ({ ...a, at: got.find(g => g.code === a.k)?.at || null }))
+  res.json({ u, cups, recent, st: { ...st, ms: +st.ms }, own, fl, isf, ach })
 })
 
 app.get('/api/shop', async (req, res) => {
@@ -335,6 +480,7 @@ app.post('/api/shop/buy', need, async (req, res) => {
     await db.q('delete from inv where user_id=$1 and item_id=$2', [req.u.id, it.id])
     return res.status(400).json({ e: 'Не хватает монет' })
   }
+  feed(req.u.id, 'buy', { n: it.name, k: it.kind, v: it.value }).catch(() => {})
   res.json({ coins: r.coins })
 })
 
@@ -358,7 +504,8 @@ app.post('/api/ai', need, async (req, res) => {
   const q = await quota(req.u)
   if (!q.ok) return res.status(429).json({ e: 'Лимит вопросов на сегодня закончился. Завтра будет новый' })
   const b = req.body || {}
-  let msgs = [{ role: 'system', content: SYS }]
+  const LN = { en: 'English', uz: "o'zbek tili (lotin yozuvida)", tg: 'забони тоҷикӣ' }
+  let msgs = [{ role: 'system', content: SYS + (LN[b.lang] ? ` Пользователь выбрал язык интерфейса: ${LN[b.lang]}. Отвечай на этом языке.` : '') }]
   if (b.mode === 'explain') {
     msgs.push({ role: 'user', content: 'Объясни этот код коротко и понятно новичку: что он делает в целом и что интересного в ключевых строках. Без пересказа каждой строки.\n\n```python\n' + String(b.code || '').slice(0, 6000) + '\n```' })
   } else if (b.mode === 'tips') {
@@ -376,9 +523,109 @@ app.post('/api/ai', need, async (req, res) => {
   }
 })
 
-const ctx = { app, io, db, cfg, need, adm, modr, ask }
+app.get('/api/quests', async (req, res) => res.json(await questList(req.u?.id)))
+app.post('/api/quests/claim', need, async (req, res) => {
+  const r = await claim(req.u.id, String(req.body?.k || ''))
+  if (r.e) return res.status(400).json(r)
+  res.json({ ...r, u: pu(await db.one(uSel + ' where id=$1', [req.u.id])) })
+})
+
+app.get('/api/feed', async (req, res) => res.json({ rows: await feedList(req.u?.id, String(req.query.scope || '')) }))
+app.post('/api/feed/:id/react', need, async (req, res) => {
+  if (!lim('re' + req.u.id, 30, 60000)) return res.status(429).json({ e: 'Слишком часто' })
+  const r = await react(req.u, +req.params.id, String(req.body?.e || ''))
+  if (r.e) return res.status(400).json(r)
+  res.json(r)
+})
+
+app.post('/api/follow/:id', need, async (req, res) => {
+  const id = +req.params.id
+  if (!id || id === req.u.id) return res.status(400).json({ e: 'Нельзя подписаться на себя' })
+  if (!lim('fo' + req.u.id, 30, 60000)) return res.status(429).json({ e: 'Слишком часто' })
+  const t = await db.one('select id from users where id=$1 and not banned', [id])
+  if (!t) return res.status(404).json({ e: 'Пользователь не найден' })
+  const del = await db.one('delete from follows where follower=$1 and followee=$2 returning followee', [req.u.id, id])
+  if (!del) {
+    await db.q('insert into follows(follower,followee) values($1,$2) on conflict do nothing', [req.u.id, id])
+    await note(id, 'follow', { name: req.u.name, avatar: req.u.avatar })
+    check(req.u.id).catch(() => {})
+  }
+  const n = (await db.one('select count(*)::int n from follows where followee=$1', [id])).n
+  res.json({ on: !del, fans: n })
+})
+
+app.get('/api/users', async (req, res) => {
+  const q = String(req.query.q || '').trim().slice(0, 30).replace(/[%_]/g, '')
+  if (q.length < 2) return res.json({ rows: [] })
+  res.json({ rows: await db.q(`select id,name,avatar,frame,ncolor,xp,best_wpm from users where not banned and name ilike $1 order by xp desc limit 20`, ['%' + q + '%']) })
+})
+
+app.get('/api/notes', need, async (req, res) => {
+  res.json({ rows: await db.q('select * from notes where user_id=$1 order by id desc limit 40', [req.u.id]) })
+})
+app.post('/api/notes/read', need, async (req, res) => {
+  await db.q('update notes set read=true where user_id=$1 and not read', [req.u.id])
+  res.json({ ok: 1 })
+})
+
+app.get('/api/duels', need, async (req, res) => {
+  const rows = await db.q(`select d.*, ua.name an, ua.avatar aa, ub.name bn, ub.avatar ba from duels d
+    left join users ua on ua.id=d.a left join users ub on ub.id=d.b where d.a=$1 or d.b=$1 order by d.id desc limit 15`, [req.u.id])
+  res.json({ rows, w: req.u.duel_w, l: req.u.duel_l })
+})
+
+app.get('/api/u/:name/stats', async (req, res) => {
+  const u = await db.one('select id from users where lower(name)=lower($1) and not banned', [String(req.params.name)])
+  if (!u) return res.status(404).json({ e: 'Пользователь не найден' })
+  const day = "to_char(date_trunc('day', created_at), 'YYYY-MM-DD')"
+  const days = await db.q(`select ${day} d, count(*)::int runs, round(avg(wpm))::int avg, max(wpm)::int best, round(avg(acc))::int acc, sum(chars)::int chars
+    from results where user_id=$1 and created_at > now() - interval '30 days' group by 1 order by 1`, [u.id])
+  const cal = await db.q(`select ${day} d, count(*)::int n from results where user_id=$1 and created_at > now() - interval '182 days' group by 1`, [u.id])
+  const wk = await db.one(`select
+      round(avg(wpm) filter (where created_at > now() - interval '7 days'))::int w1,
+      round(avg(wpm) filter (where created_at <= now() - interval '7 days'))::int w0,
+      round(avg(acc) filter (where created_at > now() - interval '7 days'))::int a1,
+      round(avg(acc) filter (where created_at <= now() - interval '7 days'))::int a0,
+      count(*) filter (where created_at > now() - interval '7 days')::int r1,
+      count(*) filter (where created_at <= now() - interval '7 days')::int r0
+    from results where user_id=$1 and created_at > now() - interval '14 days'`, [u.id])
+  const today = (await db.one("select to_char(now(), 'YYYY-MM-DD') d")).d
+  res.json({ days, cal, wk, today })
+})
+
+app.get('/api/tourn', async (req, res) => {
+  const t = await tourn.current()
+  if (!t) return res.json({ t: null })
+  const b = await tourn.board(t.id, req.u?.id)
+  const prev = await db.one('select id,title from tourn where week < $1 order by week desc limit 1', [t.week])
+  const top = prev ? (await tourn.board(prev.id, null, 3)).rows : []
+  res.json({ t: { id: t.id, title: t.title, code: t.code }, ends: await tourn.ends(), ...b, prize: tourn.PRIZE, part: tourn.PART, prev: prev ? { title: prev.title, top } : null })
+})
+
+const PUSH_HOST = /(^|\.)(googleapis\.com|mozilla\.com|mozaws\.net|push\.apple\.com|notify\.windows\.com)$/i
+app.get('/api/push/key', (req, res) => res.json({ key: pushKey() }))
+app.post('/api/push/sub', need, async (req, res) => {
+  const s = req.body?.sub, lang = ['ru', 'en', 'uz', 'tg'].includes(req.body?.lang) ? req.body.lang : 'ru'
+  let host = ''
+  try { host = new URL(String(s?.endpoint || '')).hostname } catch (e) {}
+  if (!/^https:\/\//.test(s?.endpoint || '') || s.endpoint.length > 1000 || !PUSH_HOST.test(host) || typeof s.keys?.p256dh !== 'string' || typeof s.keys?.auth !== 'string') {
+    return res.status(400).json({ e: 'Браузер прислал непонятную подписку' })
+  }
+  const sub = { endpoint: s.endpoint, keys: { p256dh: s.keys.p256dh.slice(0, 200), auth: s.keys.auth.slice(0, 100) } }
+  await db.q(`insert into push(endpoint,user_id,sub,lang) values($1,$2,$3,$4)
+    on conflict(endpoint) do update set user_id=excluded.user_id, sub=excluded.sub, lang=excluded.lang, at=now()`, [sub.endpoint, req.u.id, JSON.stringify(sub), lang])
+  await db.q('delete from push where user_id=$1 and endpoint not in (select endpoint from push where user_id=$1 order by at desc limit 5)', [req.u.id])
+  res.json({ ok: 1 })
+})
+app.post('/api/push/unsub', need, async (req, res) => {
+  await db.q('delete from push where endpoint=$1 and user_id=$2', [String(req.body?.endpoint || ''), req.u.id])
+  res.json({ ok: 1 })
+})
+
+const ctx = { app, io, db, cfg, need, adm, modr, ask, feed, note, bump, check }
 admin(app, ctx)
-chat(io, who)
+chat(io)
+duel(io)
 
 const pdir = path.join(dir, 'plugins')
 if (fs.existsSync(pdir)) {
@@ -400,5 +647,12 @@ app.use((err, req, res, next) => {
   console.error(err)
   res.status(err.status || 500).json({ e: err.type === 'entity.parse.failed' ? 'Кривой JSON' : 'Ошибка сервера' })
 })
+
+const jobs = () => {
+  tourn.payout().catch(e => console.error('турнир:', e.message))
+  remindStreaks().catch(e => console.error('напоминания:', e.message))
+}
+setTimeout(jobs, 5000).unref()
+setInterval(jobs, 10 * 60e3).unref()
 
 srv.listen(PORT, () => console.log('pytype запущен: http://localhost:' + PORT))

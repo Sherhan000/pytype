@@ -3,7 +3,7 @@ function fld(f, v) {
   const lab = `<span>${esc(f.l)}${f.hint ? ` <span class="mu2 xs">· ${esc(f.hint)}</span>` : ''}</span>`
   if (f.t === 'bool') return `<label class="sw ${f.full ? 'full' : ''}"><input type="checkbox" data-k="${f.k}" ${val ? 'checked' : ''}>${esc(f.l)}</label>`
   if (f.t === 'sel') return `<label class="f ${f.full ? 'full' : ''}">${lab}<select class="in" data-k="${f.k}">${f.o.map(([a, b]) => `<option value="${esc(a)}" ${String(a) === String(val) ? 'selected' : ''}>${esc(b)}</option>`).join('')}</select></label>`
-  if (f.t === 'area' || f.t === 'code') return `<label class="f full">${lab}<textarea class="in ${f.t === 'code' ? 'code' : ''}" data-k="${f.k}" rows="${f.t === 'code' ? 14 : 3}" spellcheck="false">${esc(typeof val === 'object' ? JSON.stringify(val) : val)}</textarea></label>`
+  if (f.t === 'area' || f.t === 'code') return `<label class="f full">${lab}<textarea class="in ${f.t === 'code' ? 'code' : ''}" data-k="${f.k}" rows="${f.t === 'code' ? 14 : f.rows || 3}" spellcheck="false">${esc(typeof val === 'object' ? JSON.stringify(val, null, 2) : val)}</textarea></label>`
   return `<label class="f ${f.full ? 'full' : ''}">${lab}<input class="in" data-k="${f.k}" type="${f.t === 'num' ? 'number' : f.t === 'color' ? 'color' : 'text'}" value="${esc(val)}" ${f.t === 'color' ? 'style="height:44px;padding:4px"' : ''}></label>`
 }
 function readF(el, fs) {
@@ -16,6 +16,19 @@ function readF(el, fs) {
   return r
 }
 function tabKeys(ta) { ta.addEventListener('keydown', e => { if (e.key === 'Tab') { e.preventDefault(); ta.setRangeText('    ', ta.selectionStart, ta.selectionEnd, 'end') } }) }
+
+const KMETA = {
+  type: '{}',
+  quiz: JSON.stringify({ q: 'Что выведет этот код?', options: ['вариант A', 'вариант B', 'вариант C', 'вариант D'], answer: 0, explain: '' }, null, 2),
+  fix: JSON.stringify({ fixed: 'сюда исправленный код целиком', hint: '', explain: '' }, null, 2),
+  fill: JSON.stringify({ hint: '', explain: '' }, null, 2)
+}
+const KHELP = {
+  type: '<b>Печать кода.</b> <span class="mu sm">Игрок печатает код на скорость. Работают минимум WPM и точности.</span>',
+  quiz: '<b>Что выведет код.</b> <span class="mu sm">В «Код» положи программу. В meta: <code>options</code> — варианты, <code>answer</code> — номер верного с нуля. Без <code>options</code> игрок вписывает вывод сам, тогда <code>answer</code> — точный текст вывода. <code>explain</code> покажется после верного ответа. Проверь вывод кнопкой «Проверить код».</span>',
+  fix: '<b>Найди ошибку.</b> <span class="mu sm">В «Код» положи код с ошибкой. В meta: <code>fixed</code> — исправленный код целиком, можно <code>accept</code> — список других верных вариантов. Лишние пробелы внутри строк не важны.</span>',
+  fill: '<b>Допиши пропуски.</b> <span class="mu sm">В «Коде» отметь пропуски двойными фигурными скобками: <code>{{range}}</code>. Несколько верных ответов через |: <code>{{+=|= total +}}</code>. Ответы в браузер не уходят.</span>'
+}
 
 const ATABS = [
   ['ov', 'Обзор', ['admin']], ['tasks', 'Задания', ['admin']], ['leagues', 'Лиги', ['admin']], ['items', 'Магазин', ['admin']],
@@ -70,16 +83,16 @@ const ADM = {
     const FS = [
       { k: 'title', l: 'Название', full: 1 },
       { k: 'league_id', l: 'Лига', t: 'sel', o: [['', 'Без лиги (раздел «Разное»)'], ...lgs.map(l => [l.id, l.icon + ' ' + l.name])] },
-      { k: 'kind', l: 'Тип', d: 'type', hint: 'type = печать кода' },
+      { k: 'kind', l: 'Тип', t: 'sel', d: 'type', o: [['type', '⌨️ type: печать кода'], ['quiz', '❓ quiz: что выведет код'], ['fix', '🔧 fix: найди ошибку'], ['fill', '✍️ fill: допиши пропуски']] },
       { k: 'descr', l: 'Описание', t: 'area' },
-      { k: 'code', l: 'Код для печати', t: 'code' },
+      { k: 'code', l: 'Код', t: 'code' },
       { k: 'lvl', l: 'Сложность 1-3', t: 'num', d: 1 },
       { k: 'ord', l: 'Порядок', t: 'num', d: 0 },
       { k: 'min_wpm', l: 'Минимум WPM', t: 'num', d: 15 },
       { k: 'min_acc', l: 'Минимум точности %', t: 'num', d: 88 },
       { k: 'coins', l: 'Награда монет', t: 'num', d: 20 },
       { k: 'xp', l: 'Награда XP', t: 'num', d: 30 },
-      { k: 'meta', l: 'meta (JSON для будущих фич)', t: 'area', d: '{}' },
+      { k: 'meta', l: 'meta (JSON)', t: 'area', d: '{}', rows: 7 },
       { k: 'active', l: 'Активно', t: 'bool', d: true, full: 1 }
     ]
     function draw() {
@@ -95,8 +108,19 @@ const ADM = {
     }
     function edit(t, pre) {
       const m = modal(`<h2>${t ? 'Редактировать' : 'Новое задание'}</h2><div class="form mt" data-f>${FS.map(f => fld(f, t ? t[f.k] : pre?.[f.k])).join('')}</div>
+        <div class="card mt kh" data-kh></div>
         <div class="row mt"><button class="btn" data-pv>${I.play} Проверить код</button><span class="sp"></span><button class="btn" data-x2>Отмена</button><button class="btn pri" data-s>Сохранить</button></div><div class="out" hidden data-o></div>`, { wide: true })
       tabKeys($('[data-k=code]', m.el))
+      tabKeys($('[data-k=meta]', m.el))
+      const kSel = $('[data-k=kind]', m.el), meta = $('[data-k=meta]', m.el)
+      const kh = () => {
+        const k = kSel.value
+        $('[data-kh]', m.el).innerHTML = KHELP[k] || ''
+        const cur = meta.value.trim()
+        if (!cur || cur === '{}' || Object.values(KMETA).includes(cur)) meta.value = KMETA[k] || '{}'
+      }
+      kSel.onchange = kh
+      kh()
       $('[data-x2]', m.el).onclick = m.close
       $('[data-pv]', m.el).onclick = () => runPy($('[data-k=code]', m.el).value, $('[data-o]', m.el))
       $('[data-s]', m.el).onclick = async () => {
@@ -122,15 +146,17 @@ const ADM = {
       if ('ai' in q.dataset) {
         const m = modal(`<h2>${I.spark.replace('<svg', '<svg style="width:22px;height:22px;vertical-align:-3px;color:var(--y)"')} Задание от ИИ</h2>
           <div class="col mt"><label class="f">Тема<input class="in" data-tp placeholder="например: словари, рекурсия, классы, работа со строками"></label>
+          <label class="f">Тип задания<select class="in" data-kd><option value="type">⌨️ Печать кода</option><option value="quiz">❓ Что выведет код</option><option value="fix">🔧 Найди ошибку</option><option value="fill">✍️ Допиши пропуски</option></select></label>
           <label class="f">Сложность<select class="in" data-lv><option value="1">1, лёгкое</option><option value="2">2, среднее</option><option value="3">3, сложное</option></select></label>
           <button class="btn blue" data-g>Сгенерировать</button></div>`)
         $('[data-g]', m.el).onclick = async ev => {
           ev.target.disabled = true; ev.target.textContent = 'Думаю...'
           try {
-            const r = await api('admin/ai-task', { topic: $('[data-tp]', m.el).value || 'циклы', lvl: +$('[data-lv]', m.el).value })
-            const lv = +$('[data-lv]', m.el).value
+            const kd = $('[data-kd]', m.el).value
+            const r = await api('admin/ai-task', { topic: $('[data-tp]', m.el).value || 'циклы', lvl: +$('[data-lv]', m.el).value, kind: kd })
+            const lv = +$('[data-lv]', m.el).value, ty = kd === 'type'
             m.close()
-            edit(null, { ...r, lvl: lv, min_wpm: [0, 12, 18, 26][lv], min_acc: [0, 85, 90, 93][lv], coins: [0, 15, 30, 50][lv], xp: [0, 20, 40, 70][lv], league_id: lf !== 'all' ? lf : '' })
+            edit(null, { ...r, lvl: lv, min_wpm: ty ? [0, 12, 18, 26][lv] : 0, min_acc: ty ? [0, 85, 90, 93][lv] : 0, coins: [0, 15, 30, 50][lv], xp: [0, 20, 40, 70][lv], league_id: lf !== 'all' ? lf : '' })
           } catch (er) { toast(er.message, 'err'); ev.target.disabled = false; ev.target.textContent = 'Сгенерировать' }
         }
       }

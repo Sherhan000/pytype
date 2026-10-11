@@ -82,4 +82,62 @@ create table if not exists msgs(
 );
 create table if not exists ai_use(user_id int not null, day date not null, n int not null default 0, primary key(user_id, day));
 create table if not exists kv(k text primary key, v jsonb not null);
+alter table users add column if not exists duel_w int not null default 0;
+alter table users add column if not exists duel_l int not null default 0;
+alter table users add column if not exists msgs int not null default 0;
+create table if not exists follows(
+  follower int not null references users(id) on delete cascade, followee int not null references users(id) on delete cascade,
+  at timestamptz not null default now(), primary key(follower, followee)
+);
+create table if not exists events(
+  id serial primary key, user_id int not null references users(id) on delete cascade, kind text not null,
+  data jsonb not null default '{}', created_at timestamptz not null default now()
+);
+create table if not exists reacts(
+  event_id int not null references events(id) on delete cascade, user_id int not null references users(id) on delete cascade,
+  emoji text not null, primary key(event_id, user_id, emoji)
+);
+create table if not exists uq(
+  user_id int not null references users(id) on delete cascade, day date not null,
+  data jsonb not null default '{}', claimed jsonb not null default '[]', primary key(user_id, day)
+);
+create table if not exists ach(
+  user_id int not null references users(id) on delete cascade, code text not null,
+  at timestamptz not null default now(), primary key(user_id, code)
+);
+create table if not exists notes(
+  id serial primary key, user_id int not null references users(id) on delete cascade, kind text not null,
+  data jsonb not null default '{}', read boolean not null default false, created_at timestamptz not null default now()
+);
+create index if not exists notes_u on notes(user_id, id);
+create table if not exists duels(
+  id serial primary key, a int, b int, winner int, a_wpm int, b_wpm int, title text, reason text,
+  created_at timestamptz not null default now()
+);
+create table if not exists ghosts(
+  user_id int not null references users(id) on delete cascade, task_id int not null references tasks(id) on delete cascade,
+  wpm int not null, ms int not null, step int not null, tl jsonb not null, at timestamptz not null default now(),
+  primary key(user_id, task_id)
+);
+create index if not exists ghosts_t on ghosts(task_id, wpm);
+create table if not exists att(
+  user_id int not null references users(id) on delete cascade, task_id int not null references tasks(id) on delete cascade,
+  n int not null default 0, primary key(user_id, task_id)
+);
+create table if not exists tourn(
+  id serial primary key, week date not null unique, task_id int references tasks(id) on delete set null,
+  title text not null, code text not null, prized boolean not null default false
+);
+create table if not exists tentry(
+  tourn_id int not null references tourn(id) on delete cascade, user_id int not null references users(id) on delete cascade,
+  wpm int not null, acc int not null, ms int not null, tries int not null default 1, at timestamptz not null default now(),
+  primary key(tourn_id, user_id)
+);
+alter table runs add column if not exists tourn int;
+create table if not exists push(
+  endpoint text primary key, user_id int not null references users(id) on delete cascade, sub jsonb not null,
+  lang text not null default 'ru', at timestamptz not null default now()
+);
+create index if not exists push_u on push(user_id);
+alter table users add column if not exists remind_on date;
 `

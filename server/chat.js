@@ -1,6 +1,7 @@
 import { db } from './db.js'
 import { cfg, lim } from './util.js'
 import { ask, quota, SYS } from './ai.js'
+import { bump, check } from './social.js'
 
 const online = new Map()
 export const onlineN = () => online.size
@@ -43,7 +44,7 @@ export async function history(n = 60) {
   return r.reverse().map(x => shape(x, x.bot || !x.uid ? null : { id: x.uid, name: x.name, avatar: x.avatar, frame: x.frame, ncolor: x.ncolor, title: x.title, role: x.role }))
 }
 
-export default function chat(io, who) {
+export default function chat(io) {
   const last = new Map()
 
   async function post(text) {
@@ -65,10 +66,9 @@ export default function chat(io, who) {
   }
 
   io.on('connection', async s => {
-    let u = null
-    try { u = await who(s.handshake.headers.cookie) } catch (e) {}
+    const u = s.data.u
     s.data.uid = u?.id || 0
-    if (u) online.set(u.id, (online.get(u.id) || 0) + 1)
+    if (u) { online.set(u.id, (online.get(u.id) || 0) + 1); s.join('u' + u.id) }
     const can = !!u || cfg.chat.read
     if (can) {
       s.join('g')
@@ -107,6 +107,9 @@ export default function chat(io, who) {
         const m = await db.one('insert into msgs(user_id,text) values($1,$2) returning *', [me.id, t])
         io.to('g').emit('msg', shape(m, me))
         ok()
+        await db.q('update users set msgs=msgs+1 where id=$1', [me.id])
+        bump(me.id, { chat: 1 }).catch(() => {})
+        if (me.msgs + 1 >= 50) check(me.id).catch(() => {})
         if (cfg.ai.on && cfg.ai.chat && process.env.GROQ_API_KEY && /^(\/ai|@ии|@ai)\s+/i.test(t)) bot(me, t)
       } catch (e) {
         console.error(e)
@@ -114,22 +117,28 @@ export default function chat(io, who) {
       }
     })
 
+    const ack = (cb, d) => { if (typeof cb === 'function') cb(d) }
+
     s.on('del', async (id, cb) => {
-      const me = await db.one('select role from users where id=$1', [s.data.uid]).catch(() => null)
-      if (!me || !['admin', 'mod'].includes(me.role)) return cb?.({ e: 'Нет прав' })
-      await db.q('update msgs set deleted=true where id=$1', [+id || 0])
-      io.to('g').emit('del', +id)
-      cb?.({ ok: 1 })
+      try {
+        const me = await db.one('select role from users where id=$1', [s.data.uid])
+        if (!me || !['admin', 'mod'].includes(me.role)) return ack(cb, { e: 'Нет прав' })
+        await db.q('update msgs set deleted=true where id=$1', [+id || 0])
+        io.to('g').emit('del', +id)
+        ack(cb, { ok: 1 })
+      } catch (e) { console.error(e); ack(cb, { e: 'Ошибка сервера' }) }
     })
 
     s.on('mute', async (o, cb) => {
-      const me = await db.one('select role from users where id=$1', [s.data.uid]).catch(() => null)
-      if (!me || !['admin', 'mod'].includes(me.role)) return cb?.({ e: 'Нет прав' })
-      const min = Math.min(Math.max(+o?.min || 10, 1), 60 * 24 * 30)
-      const t = await db.one(`update users set muted_until=now()+($2::int * interval '1 minute') where id=$1 and role='user' returning name`, [+o?.uid || 0, min])
-      if (!t) return cb?.({ e: 'Нельзя замутить этого пользователя' })
-      io.to('g').emit('sys', `${t.name} получил мут на ${min} мин`)
-      cb?.({ ok: 1 })
+      try {
+        const me = await db.one('select role from users where id=$1', [s.data.uid])
+        if (!me || !['admin', 'mod'].includes(me.role)) return ack(cb, { e: 'Нет прав' })
+        const min = Math.min(Math.max(+o?.min || 10, 1), 60 * 24 * 30)
+        const t = await db.one(`update users set muted_until=now()+($2::int * interval '1 minute') where id=$1 and role='user' returning name`, [+o?.uid || 0, min])
+        if (!t) return ack(cb, { e: 'Нельзя замутить этого пользователя' })
+        io.to('g').emit('sys', `${t.name} получил мут на ${min} мин`)
+        ack(cb, { ok: 1 })
+      } catch (e) { console.error(e); ack(cb, { e: 'Ошибка сервера' }) }
     })
 
     s.on('disconnect', () => {

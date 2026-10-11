@@ -402,6 +402,73 @@ const IT = [
   ['color', 'Фиолетовый ник', '#a98bff', 150], ['color', 'Градиентный ник', 'grad', 500]
 ]
 
+const EX = [
+  ['quiz', 'Что выведет: срезы', 'Сортировка списка и срез.', `nums = [3, 1, 4, 1, 5]
+nums.sort()
+print(nums[1:4])`, { q: 'Что выведет этот код?', options: ['[1, 3, 4]', '[1, 1, 3]', '[3, 4, 5]', '[1, 4, 1]'], answer: 0, explain: 'После sort() список [1, 1, 3, 4, 5]. Срез [1:4] берёт элементы с индексами 1, 2 и 3.' }],
+  ['quiz', 'Что выведет: изменяемый аргумент', 'Ловушка со списком в значении по умолчанию.', `def f(x, acc=[]):
+    acc.append(x)
+    return len(acc)
+
+f(1)
+f(2)
+print(f(3))`, { q: 'Что выведет этот код?', options: ['1', '3', '0', 'Ошибку'], answer: 1, explain: 'Значение по умолчанию создаётся один раз. Все три вызова добавляют в один и тот же список.' }],
+  ['quiz', 'Что выведет: генератор словаря', 'Впиши вывод сам, символ в символ.', `words = ["py", "type", "code"]
+print({w: len(w) for w in words if len(w) > 2})`, { q: 'Напиши, что выведет код', answer: "{'type': 4, 'code': 4}", explain: 'Слово "py" короче трёх букв и отсеивается условием if.' }],
+  ['fix', 'Исправь: среднее', 'Функция должна вернуть среднее значение списка. Должно получиться 5.0.', `def average(nums):
+    total = 0
+    for n in nums:
+        total = n
+    return total / len(nums)
+
+
+print(average([2, 4, 6, 8]))`, { fixed: `def average(nums):
+    total = 0
+    for n in nums:
+        total += n
+    return total / len(nums)
+
+
+print(average([2, 4, 6, 8]))`, hint: 'Посмотри, что происходит с total на каждом шаге цикла.', explain: 'total = n перезаписывает сумму. Нужно копить: total += n.' }],
+  ['fix', 'Исправь: гласные', 'Должно быть 3 гласных в "Python Is Fun".', `def count_vowels(text):
+    count = 0
+    for ch in text:
+        if ch in "aeiou":
+            count += 1
+    return count
+
+
+print(count_vowels("Python Is Fun"))`, { fixed: `def count_vowels(text):
+    count = 0
+    for ch in text.lower():
+        if ch in "aeiou":
+            count += 1
+    return count
+
+
+print(count_vowels("Python Is Fun"))`, hint: 'Заглавная I тоже гласная.', explain: 'Сравнение учитывает регистр. text.lower() приводит буквы к нижнему регистру.' }],
+  ['fill', 'Допиши: квадраты', 'Заполни пропуски, чтобы получить квадраты чисел от 1 до n.', `def squares(n):
+    result = []
+    for i in {{range}}(1, n + 1):
+        result.{{append}}(i {{**}} 2)
+    {{return}} result
+
+
+print(squares(5))`, { hint: 'Нужны: функция для диапазона, метод списка, степень и выход из функции.', explain: 'range(1, n + 1) даёт числа от 1 до n, а i ** 2 возводит в квадрат.' }],
+  ['fill', 'Допиши: цепочка вызовов', 'Метод inc должен возвращать сам объект, чтобы вызовы шли цепочкой.', `class Counter:
+    def {{__init__}}(self):
+        self.value = 0
+
+    def inc(self):
+        self.value {{+=}} 1
+        return {{self}}
+
+
+c = Counter()
+c.inc().inc().inc()
+print(c.value)`, { hint: 'Конструктор, увеличение на 1 и что вернуть для цепочки.', explain: 'Возвращая self, метод позволяет писать c.inc().inc().' }]
+]
+
 export async function seed() {
   const c = await db.one('select count(*)::int n from leagues')
   if (!c.n) {
@@ -421,5 +488,13 @@ export async function seed() {
   const ic = await db.one('select count(*)::int n from items')
   if (!ic.n) {
     for (const [i, x] of IT.entries()) await db.q('insert into items(kind,name,value,price,ord) values($1,$2,$3,$4,$5)', [...x, i])
+  }
+  const ex = await db.one("select 1 from kv where k='seed2'")
+  if (!ex) {
+    for (const [i, x] of EX.entries()) {
+      await db.q('insert into tasks(league_id,title,descr,kind,code,meta,lvl,min_wpm,min_acc,coins,xp,ord) values(null,$1,$2,$3,$4,$5,1,0,0,20,30,$6)',
+        [x[1], x[2], x[0], x[3], JSON.stringify(x[4]), 100 + i])
+    }
+    await db.q("insert into kv(k,v) values('seed2','true') on conflict do nothing")
   }
 }
