@@ -469,6 +469,36 @@ c.inc().inc().inc()
 print(c.value)`, { hint: 'Конструктор, увеличение на 1 и что вернуть для цепочки.', explain: 'Возвращая self, метод позволяет писать c.inc().inc().' }]
 ]
 
+const EX3 = [
+  ['test', 'Тест: основы Python', 'Пять вопросов про типы, операторы и функции.', '', { qs: [
+    { q: 'Какой тип у значения 3.0?', options: ['int', 'float', 'str', 'decimal'], answer: 1, explain: 'Число с точкой это float, даже если дробная часть нулевая.' },
+    { q: 'Что вернёт этот вызов?', code: 'len([1, [2, 3], 4])', options: ['4', '3', '2', 'Ошибку'], answer: 1, explain: 'Вложенный список считается одним элементом.' },
+    { q: 'Какой оператор даёт остаток от деления?', options: ['//', '%', '/', '**'], answer: 1, explain: '7 % 3 даёт 1. А // это деление нацело.' },
+    { q: 'Что выведет print(bool(""))?', options: ['True', 'False', 'None', '""'], answer: 1, explain: 'Пустая строка, 0, None и пустые коллекции считаются ложными.' },
+    { q: 'Как правильно объявить функцию?', options: ['function f():', 'def f():', 'func f():', 'def f:'], answer: 1, explain: 'Функция объявляется через def, а после имени всегда идут скобки.' }
+  ] }],
+  ['test', 'Тест: списки и словари', 'Проверь, как работают коллекции.', '', { qs: [
+    { q: 'Что выведет код?', code: 'a = [1, 2, 3]\nb = a\nb.append(4)\nprint(len(a))', options: ['3', '4', 'Ошибку', '1'], answer: 1, explain: 'b = a не копирует список. Это две ссылки на один и тот же объект.' },
+    { q: 'Какой метод удаляет и возвращает последний элемент списка?', options: ['remove()', 'pop()', 'del', 'clear()'], answer: 1, explain: 'pop() без аргумента забирает последний элемент.' },
+    { q: 'Что вернёт этот вызов?', code: "{'a': 1}.get('b', 0)", options: ['None', '0', 'Ошибку KeyError', "'b'"], answer: 1, explain: 'get возвращает значение по умолчанию, если ключа нет.' },
+    { q: 'Можно ли сделать список ключом словаря?', options: ['Да', 'Нет, список изменяемый', 'Только пустой', 'Только из чисел'], answer: 1, explain: 'Ключ должен быть хешируемым. Вместо списка подойдёт кортеж.' },
+    { q: 'Что выведет код?', code: 'print([x * 2 for x in range(3)])', options: ['[0, 2, 4]', '[2, 4, 6]', '[0, 1, 2]', '[1, 2, 3]'], answer: 0, explain: 'range(3) даёт 0, 1, 2, и каждое число умножается на 2.' }
+  ] }],
+  ['next', 'Что дальше: сумма чисел', 'Выбери строку, которая должна идти следующей.', 'total = 0\nfor n in range(1, 6):', { q: 'Какая строка будет дальше?', options: ['    total += n', 'total += n', '    total = n', '    return total'], answer: 0, explain: 'Тело цикла пишется с отступом, а сумму копим через +=.' }],
+  ['next', 'Что дальше: обработка ошибки', 'Как продолжить блок try?', 'text = "42a"\ntry:\n    x = int(text)', { q: 'Какая строка будет дальше?', options: ['except ValueError:', '    except ValueError:', 'catch ValueError:', 'else ValueError:'], answer: 0, explain: 'except стоит на одном уровне с try, без отступа.' }],
+  ['next', 'Что дальше: метод класса', 'Допиши тело метода.', 'class Dog:\n    def __init__(self, name):\n        self.name = name\n\n    def bark(self):', { q: 'Какая строка будет дальше?', options: ['        return f"{self.name}: woof"', '    return f"{self.name}: woof"', '        return f"{name}: woof"', '        self.bark()'], answer: 0, explain: 'Внутри метода к полям обращаются через self, а тело метода стоит на втором уровне отступа.' }],
+  ['trim', 'Убери лишнее: максимум', 'Функция должна вернуть 9.', 'def biggest(nums):\n    best = nums[0]\n    for n in nums:\n        if n > best:\n            best = n\n        best = 0\n    return best\n\n\nprint(biggest([3, 9, 4]))', { extra: [6], hint: 'Одна строка портит результат на каждом шаге цикла.', explain: 'best = 0 обнуляла найденный максимум в каждой итерации.' }],
+  ['trim', 'Убери лишнее: буквы o', 'Код должен вывести только количество букв o, то есть 2.', 'count = 0\ntext = "hello world"\nfor ch in text:\n    if ch == "o":\n        count += 1\n        count = count - 1\nprint(count)\nprint(text.upper())', { extra: [6, 8], hint: 'Лишних строк две: одна ломает подсчёт, другая выводит то, что не нужно.', explain: 'count = count - 1 отменяла каждое прибавление, а print(text.upper()) печатал лишнее.' }]
+]
+
+const NEWS = [
+  ['Дуэли, лента и задания дня', 'Соревнуйся с живыми соперниками, ставь реакции на успехи друзей и забирай сундук за три задания дня.', '⚔️'],
+  ['Турнир недели и призрак', 'Один код на всех на целую неделю и призы лучшим. На заданиях можно включить призрака: свой рекорд или лучшего игрока.', '🏁'],
+  ['Своё: файлы, режимы и таймер', 'В тренировке можно открыть свой файл с кодом и печатать его по кускам. Код можно показывать целиком, по строкам или по словам. Есть печать на время: от 30 секунд до 5 минут.', '📂'],
+  ['Новые головоломки', 'Тесты с вопросами, «Что будет дальше» и «Убери лишний код». После ответа видно, что выбрали другие игроки.', '🧩'],
+  ['Аналитика', 'Новая страница со статистикой: насколько ты быстрее других, какие задания самые сложные, в какие часы все печатают и на каких символах ошибаются чаще всего.', '📊']
+]
+
 export async function seed() {
   const c = await db.one('select count(*)::int n from leagues')
   if (!c.n) {
@@ -496,5 +526,15 @@ export async function seed() {
         [x[1], x[2], x[0], x[3], JSON.stringify(x[4]), 100 + i])
     }
     await db.q("insert into kv(k,v) values('seed2','true') on conflict do nothing")
+  }
+  if (!(await db.one("select 1 from kv where k='seed3'"))) {
+    for (const [i, x] of EX3.entries()) {
+      await db.q('insert into tasks(league_id,title,descr,kind,code,meta,lvl,min_wpm,min_acc,coins,xp,ord) values(null,$1,$2,$3,$4,$5,1,0,0,25,35,$6)',
+        [x[1], x[2], x[0], x[3], JSON.stringify(x[4]), 200 + i])
+    }
+    await db.q("insert into kv(k,v) values('seed3','true') on conflict do nothing")
+  }
+  if (!(await db.one('select 1 from news limit 1'))) {
+    for (const [i, x] of NEWS.entries()) await db.q("insert into news(title,body,icon,at) values($1,$2,$3,now() - ($4::int * interval '1 minute'))", [...x, NEWS.length - i])
   }
 }

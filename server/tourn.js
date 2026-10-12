@@ -1,21 +1,23 @@
-import { db } from './db.js'
+import { db, TZ } from './db.js'
+
+const WK = `date_trunc('week', now() at time zone '${TZ}')`
 import { feed, note } from './social.js'
 
 export const PRIZE = [500, 300, 200, 100, 100, 100, 100, 100, 100, 100]
 export const PART = 25
 
 export async function current() {
-  let t = await db.one("select * from tourn where week = date_trunc('week', now())::date")
+  let t = await db.one(`select * from tourn where week = ${WK}::date`)
   if (t) return t
   const k = await db.one(`select id,title,code from tasks where active and kind='type' and length(code) between 200 and 650
     and id not in (select task_id from tourn where task_id is not null order by week desc limit 4) order by random() limit 1`)
     || await db.one("select id,title,code from tasks where active and kind='type' order by random() limit 1")
   if (!k) return null
-  await db.q(`insert into tourn(week,task_id,title,code) values(date_trunc('week', now())::date,$1,$2,$3) on conflict(week) do nothing`, [k.id, k.title, k.code])
-  return db.one("select * from tourn where week = date_trunc('week', now())::date")
+  await db.q(`insert into tourn(week,task_id,title,code) values(${WK}::date,$1,$2,$3) on conflict(week) do nothing`, [k.id, k.title, k.code])
+  return db.one(`select * from tourn where week = ${WK}::date`)
 }
 
-export const ends = () => db.one("select extract(epoch from date_trunc('week', now()) + interval '7 days' - now()) * 1000 as ms").then(r => Math.max(0, +r.ms))
+export const ends = () => db.one(`select extract(epoch from (${WK} + interval '7 days') at time zone '${TZ}' - now()) * 1000 as ms`).then(r => Math.max(0, +r.ms))
 
 export async function board(tid, me, n = 50) {
   const rows = await db.q(`select e.user_id id, e.wpm, e.acc, e.ms, e.tries, u.name, u.avatar, u.frame, u.ncolor, u.title
@@ -44,7 +46,7 @@ export async function enter(tid, uid, wpm, acc, ms) {
 }
 
 export async function payout() {
-  const old = await db.q("select id,title from tourn where not prized and week < date_trunc('week', now())::date order by week")
+  const old = await db.q(`select id,title from tourn where not prized and week < ${WK}::date order by week`)
   for (const t of old) {
     const lock = await db.one('update tourn set prized=true where id=$1 and not prized returning id', [t.id])
     if (!lock) continue

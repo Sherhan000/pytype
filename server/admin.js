@@ -6,7 +6,8 @@ import { onlineN } from './chat.js'
 const T = {
   tasks: { f: ['league_id', 'title', 'descr', 'kind', 'code', 'lvl', 'min_wpm', 'min_acc', 'coins', 'xp', 'ord', 'active', 'meta'], o: 'ord,id' },
   leagues: { f: ['name', 'icon', 'color', 'ord', 'reward'], o: 'ord,id' },
-  items: { f: ['kind', 'name', 'value', 'price', 'ord', 'active'], o: 'kind,ord,id' }
+  items: { f: ['kind', 'name', 'value', 'price', 'ord', 'active'], o: 'kind,ord,id' },
+  news: { f: ['title', 'body', 'icon'], o: 'id desc' }
 }
 
 function pick(b, f) {
@@ -132,7 +133,13 @@ export default function admin(app, { adm, modr, io }) {
     fix: `Придумай задание «найди и исправь ошибку». Рабочий код на Python 6-15 строк, в котором ровно одна ошибка (логическая или синтаксическая, типичная для новичка). Исправление должно менять одну строку.
 Верни JSON {"title": "...", "descr": "одно предложение по-русски, что код должен делать", "code": "код с ошибкой", "fixed": "тот же код, но исправленный", "hint": "подсказка по-русски, не раскрывающая ответ", "explain": "в чём была ошибка, по-русски"}`,
     fill: `Придумай задание «допиши пропуски». Рабочий код на Python 6-15 строк. Замени 2-4 ключевых места (ключевое слово, имя функции, оператор или короткое выражение) на пропуски в виде {{правильный_ответ}}. Если подходит несколько ответов, перечисли их через |, например {{+=|= total +}}.
-Верни JSON {"title": "...", "descr": "одно предложение по-русски", "code": "код с пропусками {{...}}", "hint": "подсказка по-русски", "explain": "короткое объяснение по-русски"}`
+Верни JSON {"title": "...", "descr": "одно предложение по-русски", "code": "код с пропусками {{...}}", "hint": "подсказка по-русски", "explain": "короткое объяснение по-русски"}`,
+    test: `Придумай тест из 5 вопросов по этой теме для изучающих Python. В каждом вопросе 4 варианта, ровно один верный, остальные правдоподобные ошибки новичка. Если вопрос про конкретный код, положи короткий код (1-6 строк) в поле code, иначе оставь пустую строку. Проверь каждый ответ внимательно.
+Верни JSON {"title": "Тест: ...", "descr": "одно предложение по-русски", "qs": [{"q": "вопрос по-русски", "code": "", "options": ["...", "...", "...", "..."], "answer": индекс_верного_от_0, "explain": "короткое объяснение по-русски"}]}`,
+    next: `Придумай задание «какая строка будет дальше». Начало рабочей программы на Python 3-10 строк, оборванное в месте, где следующая строка однозначна. Дай 4 варианта следующей строки (с правильными отступами), ровно один верный, остальные типичные ошибки новичка: неверный отступ, не та переменная, не тот оператор.
+Верни JSON {"title": "Что дальше: ...", "descr": "одно предложение по-русски", "code": "начало кода", "options": ["строка 1", "строка 2", "строка 3", "строка 4"], "answer": индекс_верного_от_0, "hint": "подсказка по-русски", "explain": "короткое объяснение по-русски"}`,
+    trim: `Придумай задание «убери лишний код». Рабочая программа на Python 6-14 строк, в которую добавлены 1-2 лишние строки. Без них программа делает ровно то, что написано в описании, а с ними результат неверный или печатается лишнее. Лишние строки не должны ломать синтаксис при удалении.
+Верни JSON {"title": "Убери лишнее: ...", "descr": "что должна сделать программа, по-русски", "code": "код вместе с лишними строками", "extra": [номера_лишних_строк_с_1], "hint": "подсказка по-русски", "explain": "почему эти строки лишние, по-русски"}`
   }
 
   app.post('/api/admin/ai-task', adm, async (req, res) => {
@@ -150,6 +157,9 @@ export default function admin(app, { adm, modr, io }) {
     if (kind === 'quiz') Object.assign(meta, { q: String(j.q || 'Что выведет этот код?'), options: Array.isArray(j.options) ? j.options.map(String) : [], answer: Math.max(0, +j.answer || 0), explain: String(j.explain || '') })
     if (kind === 'fix') Object.assign(meta, { fixed: String(j.fixed || '').replace(/\t/g, '    '), hint: String(j.hint || ''), explain: String(j.explain || '') })
     if (kind === 'fill') Object.assign(meta, { hint: String(j.hint || ''), explain: String(j.explain || '') })
+    if (kind === 'next') Object.assign(meta, { q: 'Какая строка будет дальше?', options: Array.isArray(j.options) ? j.options.map(String) : [], answer: Math.max(0, +j.answer || 0), hint: String(j.hint || ''), explain: String(j.explain || '') })
+    if (kind === 'trim') Object.assign(meta, { extra: Array.isArray(j.extra) ? j.extra.map(Number).filter(n => n > 0) : [], hint: String(j.hint || ''), explain: String(j.explain || '') })
+    if (kind === 'test') Object.assign(meta, { qs: (Array.isArray(j.qs) ? j.qs : []).slice(0, 10).map(q => ({ q: String(q.q || ''), code: String(q.code || ''), options: Array.isArray(q.options) ? q.options.map(String) : [], answer: Math.max(0, +q.answer || 0), explain: String(q.explain || '') })) })
     res.json({ title: String(j.title || topic), descr: String(j.descr || ''), code, kind, meta: JSON.stringify(meta, null, 2) })
   })
 }

@@ -3,12 +3,15 @@ import pg from 'pg'
 
 let q, ex
 const url = process.env.DATABASE_URL
+export const TZ = process.env.APP_TZ || 'Asia/Tashkent'
+const TODAY = `(now() at time zone '${TZ}')::date`
+const fix = s => s.replaceAll('current_date', TODAY)
 
 if (url) {
   const local = /localhost|127\.0\.0\.1/.test(url)
   const pool = new pg.Pool({ connectionString: url, ssl: local ? false : { rejectUnauthorized: false }, max: 6, idleTimeoutMillis: 30000 })
   pool.on('error', e => console.error('pg pool:', e.message))
-  q = async (s, p = []) => (await pool.query(s, p)).rows
+  q = async (s, p = []) => (await pool.query(fix(s), p)).rows
   ex = async s => { await pool.query(s) }
   console.log('db: postgres')
 } else {
@@ -16,7 +19,7 @@ if (url) {
   fs.mkdirSync('data', { recursive: true })
   const d = new PGlite('data/pg')
   await d.waitReady
-  q = async (s, p = []) => (await d.query(s, p)).rows
+  q = async (s, p = []) => (await d.query(fix(s), p)).rows
   ex = async s => { await d.exec(s) }
   console.log('db: локальная база в папке data/')
 }
@@ -140,4 +143,13 @@ create table if not exists push(
 );
 create index if not exists push_u on push(user_id);
 alter table users add column if not exists remind_on date;
+create table if not exists picks(
+  task_id int not null references tasks(id) on delete cascade, user_id int not null references users(id) on delete cascade,
+  q int not null default 0, val text not null, ok boolean not null default false, at timestamptz not null default now(),
+  primary key(task_id, user_id, q)
+);
+create table if not exists news(
+  id serial primary key, title text not null, body text not null default '', icon text not null default '✨',
+  at timestamptz not null default now()
+);
 `

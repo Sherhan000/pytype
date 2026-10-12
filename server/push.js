@@ -1,5 +1,5 @@
 import webpush from 'web-push'
-import { db } from './db.js'
+import { db, TZ } from './db.js'
 
 let KEY = null
 
@@ -46,7 +46,7 @@ export async function push(uid, kind, data = {}) {
 }
 
 export async function remindStreaks() {
-  if (!KEY || new Date().getUTCHours() !== 22) return
+  if (!KEY || +new Date().toLocaleString('en-US', { timeZone: TZ, hour: 'numeric', hourCycle: 'h23' }) !== 22) return
   const rows = await db.q(`update users u set remind_on=current_date
     where u.daily_at = current_date - 1 and u.streak >= 2 and not u.banned
       and (u.remind_on is null or u.remind_on < current_date)

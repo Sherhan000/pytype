@@ -91,8 +91,9 @@ async function runPy(code, box) {
 function Trainer(root, o = {}) {
   const task = !!o.task, duel = !!o.duel, mini = !!o.mini, free = !task && !duel && !mini
   const touch = matchMedia('(pointer:coarse)').matches
-  const cfg = Object.assign({ strict: false, indent: true, nocom: false, snd: false, chunk: 0, fs: innerWidth < 600 ? 14 : 18 }, ls.g('tcfg', {}))
-  if (duel || mini) { cfg.chunk = 0; cfg.nocom = false; cfg.strict = false }
+  const cfg = Object.assign({ strict: false, indent: true, nocom: false, snd: false, chunk: 0, view: 'all', time: 0, fs: innerWidth < 600 ? 14 : 18 }, ls.g('tcfg', {}))
+  if (duel || mini) { cfg.chunk = 0; cfg.nocom = false; cfg.strict = false; cfg.view = 'all' }
+  if (!free) cfg.time = 0
   const save = () => { if (!duel && !mini) ls.s('tcfg', cfg) }
   const opt = (k, t, tip) => `<button class="chip" data-o="${k}" title="${tip}">${t}</button>`
   const SYM = ['Tab', '(', ')', ':', '"', "'", '[', ']', '{', '}', '=', '_', '.', ',', '#', '+', '-', '*', '/', '<', '>', '%', '!', '⌫']
@@ -102,15 +103,19 @@ function Trainer(root, o = {}) {
       ${opt('indent', 'Автоотступы', 'После Enter отступ ставится сам')}
       ${free ? opt('nocom', 'Без комментариев', 'Убирает комментарии из кода') : ''}
       ${opt('snd', 'Звук ошибки', 'Короткий сигнал при опечатке')}
-      ${free ? `<select class="in" data-chunk style="width:auto;padding:7px 10px;font-size:14px;flex:none">
-        <option value="0">весь код</option><option value="5">по 5 строк</option><option value="10">по 10 строк</option><option value="15">по 15 строк</option><option value="25">по 25 строк</option></select>` : ''}
+      ${duel ? '' : `<select class="in sel" data-view title="Как показывать код">
+        <option value="all">👁 весь код</option><option value="line">👁 по строкам</option><option value="word">👁 по словам</option></select>`}
+      ${free ? `<select class="in sel" data-chunk title="Делить длинный код на куски">
+        <option value="0">✂ без разбивки</option><option value="5">✂ по 5 строк</option><option value="10">✂ по 10 строк</option><option value="15">✂ по 15 строк</option><option value="25">✂ по 25 строк</option><option value="40">✂ по 40 строк</option></select>
+        <select class="in sel" data-time title="Печать на время">
+        <option value="0">⏱ без таймера</option><option value="30">⏱ 30 секунд</option><option value="60">⏱ 1 минута</option><option value="120">⏱ 2 минуты</option><option value="180">⏱ 3 минуты</option><option value="300">⏱ 5 минут</option></select>` : ''}
       <span style="flex:1"></span>
       <button class="btn sm" data-fs="-2" title="Мельче">A−</button><button class="btn sm" data-fs="2" title="Крупнее">A+</button>
     </div>`}
     ${mini ? '' : `<div class="tr-live">
       <div class="hi"><b data-l="w">0</b><span>слов в мин</span></div>
       <div><b data-l="a">100%</b><span>точность</span></div>
-      <div><b data-l="t">0:00</b><span>время</span></div>
+      <div class="tm"><b data-l="t">${free && cfg.time ? fmt(cfg.time * 1000) : '0:00'}</b><span data-tl>${free && cfg.time ? 'осталось' : 'время'}</span></div>
       <div><b data-l="c">0</b><span>знаков в мин</span></div>
       <div><b data-l="e">0</b><span>ошибок</span></div>
     </div>`}
@@ -138,7 +143,9 @@ function Trainer(root, o = {}) {
   const wrap = R('.ed'), ki = R('.ki'), scr = R('.scr'), code = R('.code'), gut = R('.gut'), hlb = R('.hl'), car = R('.car'), cb = R('.cb'), res = R('.res')
   let src = '', name = '', parts = [], pi = 0
   let T = '', sp = [], st = [], au = [], he = [], pos = 0, p0 = 0, keys = 0, errs = 0, t0 = 0, tE = 0, done = false, em = {}, tk = null, last = -1, gl = -1, tyT, runP = null, dead = false, lastProg = 0
-  let rec = [], gh = null, ghEl = null, ghRaf = 0
+  let rec = [], gh = null, ghEl = null, ghRaf = 0, V = 0
+  const timed = () => free && cfg.time > 0
+  const typable = c => c === '\n' || (c >= ' ' && c <= '~') || (c >= '\u00c0' && c <= '\u052f')
   const gbar = R('.prog .gh')
   const SENT = '  '
 
@@ -161,8 +168,33 @@ function Trainer(root, o = {}) {
 
   function load(c, n) {
     src = c; name = n || 'code'
-    parts = split(prep(c, free && cfg.nocom)); pi = 0
+    const t = prep(c, free && cfg.nocom)
+    if (timed()) {
+      let s2 = t
+      while (s2.length < cfg.time * 20) s2 += '\n\n' + prep(o.more?.() || c, cfg.nocom)
+      parts = [s2]
+    } else parts = split(t)
+    pi = 0
     start()
+  }
+
+  function skip() { while (pos < T.length && !typable(T[pos])) { st[pos] = 1; au[pos] = 1; paint(pos); pos++ } }
+
+  function vb() {
+    if (cfg.view === 'line') { const i = T.indexOf('\n', pos); return i < 0 ? T.length : i + 1 }
+    if (cfg.view === 'word') {
+      let k = pos, w = 0
+      while (k < T.length && w < 2) { while (k < T.length && /\s/.test(T[k])) k++; while (k < T.length && !/\s/.test(T[k])) k++; w++ }
+      return k
+    }
+    return T.length
+  }
+
+  function reveal() {
+    const b = vb()
+    if (b > V) for (let i = V; i < b; i++) sp[i].classList.remove('hid')
+    else for (let i = b; i < V; i++) sp[i].classList.add('hid')
+    V = b
   }
 
   function start() {
@@ -182,12 +214,16 @@ function Trainer(root, o = {}) {
     pos = 0; keys = 0; errs = 0; t0 = 0; tE = 0; done = false; em = {}; last = -1; gl = -1; runP = null; rec = []
     cancelAnimationFrame(ghRaf)
     if (cfg.indent) while (pos < T.length && T[pos] === ' ') { st[pos] = 1; au[pos] = 1; paint(pos); pos++ }
+    skip()
     p0 = pos
+    V = T.length
     res.hidden = true
     wrap.classList.remove('showres')
     scr.scrollTop = 0; scr.scrollLeft = 0
-    R('[data-fn]').textContent = (name || 'code').replace(/\s+/g, '_').toLowerCase().slice(0, 40) + '.py'
-    R('[data-pos]').textContent = parts.length > 1 ? `кусок ${pi + 1} из ${parts.length}` : pl(T.split('\n').length, 'строка', 'строки', 'строк')
+    const nm = (name || 'code').replace(/\s+/g, '_').slice(0, 40)
+    R('[data-fn]').textContent = /\.\w{1,6}$/.test(nm) ? nm : nm.toLowerCase() + '.py'
+    R('[data-pos]').textContent = timed() ? '⏱ ' + fmt(cfg.time * 1000) : parts.length > 1 ? t('кусок {0} из {1}', pi + 1, parts.length) : pl(T.split('\n').length, 'строка', 'строки', 'строк')
+    if (!mini) { R('[data-tl]').textContent = t(timed() ? 'осталось' : 'время') }
     move(); live(); ghostDraw()
     o.onLoad?.({ pi, n: parts.length })
   }
@@ -244,6 +280,7 @@ function Trainer(root, o = {}) {
   function paint(i) { const s = sp[i], v = st[i]; s.classList.toggle('ok', v === 1 || v === 3); s.classList.toggle('bad', v === 2); s.classList.toggle('fix', v === 3) }
 
   function move() {
+    reveal()
     if (last >= 0 && sp[last]) sp[last].classList.remove('cur')
     last = -1
     const s = sp[pos]
@@ -278,9 +315,10 @@ function Trainer(root, o = {}) {
     const r = calc()
     if (!mini) {
       R('[data-l=w]').textContent = r.wpm; R('[data-l=c]').textContent = r.cpm; R('[data-l=a]').textContent = r.acc + '%'
-      R('[data-l=e]').textContent = errs; R('[data-l=t]').textContent = fmt(r.ms)
+      R('[data-l=e]').textContent = errs; R('[data-l=t]').textContent = timed() ? fmt(Math.max(0, cfg.time * 1000 - r.ms) + 999) : fmt(r.ms)
     }
-    R('.prog i').style.width = (T.length ? pos / T.length * 100 : 0) + '%'
+    R('.prog i').style.width = (timed() ? Math.min(1, r.ms / cfg.time / 1000) : T.length ? pos / T.length : 0) * 100 + '%'
+    if (timed() && t0 && !done && r.ms >= cfg.time * 1000) finish()
     if (duel && o.onProg && performance.now() - lastProg > 220) { lastProg = performance.now(); o.onProg(T.length ? pos / T.length : 0, r.wpm) }
   }
 
@@ -299,6 +337,7 @@ function Trainer(root, o = {}) {
     if (!ok && cfg.strict) { const s = sp[pos]; s.classList.remove('miss'); void s.offsetWidth; s.classList.add('miss'); live(); return }
     st[pos] = ok ? (he[pos] ? 3 : 1) : 2; paint(pos); pos++
     if (ok && c === '\n' && cfg.indent) while (pos < T.length && T[pos] === ' ') { st[pos] = 1; au[pos] = 1; paint(pos); pos++ }
+    skip()
     mark()
     if (pos >= T.length) return finish()
     move(); live()
@@ -328,10 +367,12 @@ function Trainer(root, o = {}) {
   }
 
   async function finish() {
+    if (done) return
     const left = st.filter(v => v === 2).length
     if (duel && left) { warn('Исправь ошибки, чтобы финишировать'); pos = T.length; return }
-    done = true; tE = performance.now(); clearInterval(tk); tk = null; cancelAnimationFrame(ghRaf); move(); live(); ghostDraw()
+    done = true; tE = performance.now(); if (timed()) tE = Math.min(tE, t0 + cfg.time * 1000); clearInterval(tk); tk = null; cancelAnimationFrame(ghRaf); move(); live(); ghostDraw()
     const r = calc()
+    if (timed()) r.ms = Math.min(r.ms, cfg.time * 1000)
     const top = Object.entries(em).sort((a, b) => b[1] - a[1]).slice(0, 6)
     if (duel) { o.onProg?.(1, r.wpm); o.onDone?.({ chars: r.ok, keys, errs, left, ms: Math.round(r.ms), wpm: r.wpm, acc: r.acc }); return }
     if (mini) { res.innerHTML = `<div class="rc"><div class="big"><b>${r.wpm}</b><span>слов в минуту, точность ${r.acc}%</span></div><div class="ra"><button class="btn pri" data-a="again">Ещё раз</button></div></div>`; res.hidden = false; return }
@@ -370,6 +411,7 @@ function Trainer(root, o = {}) {
           ? `<div class="verdict ok">Задание пройдено</div><div class="bigstars">${[0, 1, 2].map(i => `<i>★</i>`).join('')}</div>`
           : `<div class="verdict no">Пока не засчитано</div><p style="color:#a4a9d8;margin-bottom:12px">${esc((sr.why || []).map(x => t(x)).join(', '))}</p>`
         if (sr.cup) mid += `<div class="rew"><span class="c">${esc(sr.cup.icon)} Кубок лиги «${esc(sr.cup.name)}», +${sr.cup.reward} 🪙</span></div>`
+        if (sr.beat != null) mid += `<p style="color:var(--g);font-weight:700;margin-bottom:12px">${esc(t('Быстрее, чем {0}% игроков на этом задании', sr.beat))}</p>`
       }
       const rw = [sr.coins ? `<span class="c">+${sr.coins} 🪙</span>` : '', sr.xp ? `<span class="x">+${sr.xp} XP</span>` : '', sr.best ? '<span class="c">🔥 Личный рекорд</span>' : '', ...(sr.ach || []).map(a => `<span class="a">${esc(a.i)} ${esc(t(a.t))}</span>`)].join('')
       mid += rw ? `<div class="rew">${rw}</div>` : ''
@@ -499,6 +541,10 @@ function Trainer(root, o = {}) {
   })
   const ch = R('[data-chunk]')
   if (ch) { ch.value = String(cfg.chunk); ch.onchange = () => { cfg.chunk = +ch.value; save(); load(src, name); focus() } }
+  const vw = R('[data-view]')
+  if (vw) { vw.value = cfg.view; vw.onchange = () => { cfg.view = vw.value; save(); start(); focus() } }
+  const tm = R('[data-time]')
+  if (tm) { tm.value = String(cfg.time); tm.onchange = () => { cfg.time = +tm.value; save(); if (ch) ch.disabled = !!cfg.time; load(src, name); focus() }; if (ch) ch.disabled = !!cfg.time }
   $$('[data-fs]', root).forEach(b => b.onclick = () => { cfg.fs = Math.min(30, Math.max(11, cfg.fs + +b.dataset.fs)); save(); applyFs(); move(); focus() })
 
   const onR = () => { move(); ghostDraw() }
@@ -509,6 +555,7 @@ function Trainer(root, o = {}) {
 
   return {
     load, start, focus, setGhost,
+    get cfg() { return cfg },
     prev() { if (pi > 0) { pi--; start(); focus() } },
     next,
     run: () => runPy(src, R('.out')),

@@ -21,18 +21,24 @@ const KMETA = {
   type: '{}',
   quiz: JSON.stringify({ q: 'Что выведет этот код?', options: ['вариант A', 'вариант B', 'вариант C', 'вариант D'], answer: 0, explain: '' }, null, 2),
   fix: JSON.stringify({ fixed: 'сюда исправленный код целиком', hint: '', explain: '' }, null, 2),
-  fill: JSON.stringify({ hint: '', explain: '' }, null, 2)
+  fill: JSON.stringify({ hint: '', explain: '' }, null, 2),
+  test: JSON.stringify({ qs: [{ q: 'Вопрос', code: '', options: ['A', 'B', 'C', 'D'], answer: 0, explain: '' }] }, null, 2),
+  next: JSON.stringify({ q: 'Какая строка будет дальше?', options: ['    вариант 1', 'вариант 2', 'вариант 3', 'вариант 4'], answer: 0, hint: '', explain: '' }, null, 2),
+  trim: JSON.stringify({ extra: [3], hint: '', explain: '' }, null, 2)
 }
 const KHELP = {
   type: '<b>Печать кода.</b> <span class="mu sm">Игрок печатает код на скорость. Работают минимум WPM и точности.</span>',
   quiz: '<b>Что выведет код.</b> <span class="mu sm">В «Код» положи программу. В meta: <code>options</code> — варианты, <code>answer</code> — номер верного с нуля. Без <code>options</code> игрок вписывает вывод сам, тогда <code>answer</code> — точный текст вывода. <code>explain</code> покажется после верного ответа. Проверь вывод кнопкой «Проверить код».</span>',
   fix: '<b>Найди ошибку.</b> <span class="mu sm">В «Код» положи код с ошибкой. В meta: <code>fixed</code> — исправленный код целиком, можно <code>accept</code> — список других верных вариантов. Лишние пробелы внутри строк не важны.</span>',
+  test: '<b>Тест.</b> <span class="mu sm">«Код» можно оставить пустым. В meta: <code>qs</code> — список вопросов, у каждого <code>q</code>, необязательный <code>code</code>, <code>options</code>, <code>answer</code> (номер с нуля) и <code>explain</code>.</span>',
+  next: '<b>Что будет дальше.</b> <span class="mu sm">В «Код» положи начало программы. В meta: <code>options</code> — варианты следующей строки с отступами, <code>answer</code> — номер верного с нуля.</span>',
+  trim: '<b>Убери лишнее.</b> <span class="mu sm">В «Код» положи программу вместе с лишними строками. В meta: <code>extra</code> — номера лишних строк, считая с 1.</span>',
   fill: '<b>Допиши пропуски.</b> <span class="mu sm">В «Коде» отметь пропуски двойными фигурными скобками: <code>{{range}}</code>. Несколько верных ответов через |: <code>{{+=|= total +}}</code>. Ответы в браузер не уходят.</span>'
 }
 
 const ATABS = [
   ['ov', 'Обзор', ['admin']], ['tasks', 'Задания', ['admin']], ['leagues', 'Лиги', ['admin']], ['items', 'Магазин', ['admin']],
-  ['users', 'Пользователи', ['admin', 'mod']], ['chat', 'Чат', ['admin', 'mod']], ['set', 'Настройки', ['admin']]
+  ['users', 'Пользователи', ['admin', 'mod']], ['chat', 'Чат', ['admin', 'mod']], ['news', 'Новости', ['admin']], ['set', 'Настройки', ['admin']]
 ]
 
 App.page('admin', {
@@ -83,7 +89,7 @@ const ADM = {
     const FS = [
       { k: 'title', l: 'Название', full: 1 },
       { k: 'league_id', l: 'Лига', t: 'sel', o: [['', 'Без лиги (раздел «Разное»)'], ...lgs.map(l => [l.id, l.icon + ' ' + l.name])] },
-      { k: 'kind', l: 'Тип', t: 'sel', d: 'type', o: [['type', '⌨️ type: печать кода'], ['quiz', '❓ quiz: что выведет код'], ['fix', '🔧 fix: найди ошибку'], ['fill', '✍️ fill: допиши пропуски']] },
+      { k: 'kind', l: 'Тип', t: 'sel', d: 'type', o: [['type', '⌨️ type: печать кода'], ['quiz', '❓ quiz: что выведет код'], ['fix', '🔧 fix: найди ошибку'], ['fill', '✍️ fill: допиши пропуски'], ['test', '📝 test: тест с вопросами'], ['next', '🔮 next: что будет дальше'], ['trim', '🧹 trim: убери лишний код']] },
       { k: 'descr', l: 'Описание', t: 'area' },
       { k: 'code', l: 'Код', t: 'code' },
       { k: 'lvl', l: 'Сложность 1-3', t: 'num', d: 1 },
@@ -146,7 +152,7 @@ const ADM = {
       if ('ai' in q.dataset) {
         const m = modal(`<h2>${I.spark.replace('<svg', '<svg style="width:22px;height:22px;vertical-align:-3px;color:var(--y)"')} Задание от ИИ</h2>
           <div class="col mt"><label class="f">Тема<input class="in" data-tp placeholder="например: словари, рекурсия, классы, работа со строками"></label>
-          <label class="f">Тип задания<select class="in" data-kd><option value="type">⌨️ Печать кода</option><option value="quiz">❓ Что выведет код</option><option value="fix">🔧 Найди ошибку</option><option value="fill">✍️ Допиши пропуски</option></select></label>
+          <label class="f">Тип задания<select class="in" data-kd><option value="type">⌨️ Печать кода</option><option value="quiz">❓ Что выведет код</option><option value="fix">🔧 Найди ошибку</option><option value="fill">✍️ Допиши пропуски</option><option value="test">📝 Тест с вопросами</option><option value="next">🔮 Что будет дальше</option><option value="trim">🧹 Убери лишний код</option></select></label>
           <label class="f">Сложность<select class="in" data-lv><option value="1">1, лёгкое</option><option value="2">2, среднее</option><option value="3">3, сложное</option></select></label>
           <button class="btn blue" data-g>Сгенерировать</button></div>`)
         $('[data-g]', m.el).onclick = async ev => {
@@ -312,6 +318,24 @@ const ADM = {
     }
     $('[data-l]', b).onclick = async e => { const d = e.target.closest('[data-d]'); if (d) { await api('admin/msgs/' + d.dataset.d, undefined, 'DELETE'); load() } }
     await load()
+  },
+
+  async news(b) {
+    const { rows } = await api('admin/news')
+    b.innerHTML = `<div class="card mb"><h3>Новая запись</h3><p class="sm mu mb">Появится у всех в окне «Что нового» при следующем заходе</p>
+      <div class="col"><div class="row" style="flex-wrap:nowrap"><input class="in" data-i value="✨" style="width:64px;text-align:center;flex:none" maxlength="4"><input class="in" data-t placeholder="Заголовок" maxlength="120"></div>
+      <textarea class="in" data-b rows="3" placeholder="Что изменилось, коротко и по-человечески" maxlength="1200"></textarea>
+      <div class="row"><span class="sp"></span><button class="btn pri" data-add>Опубликовать</button></div></div></div>
+      <div class="list">${rows.map(n => `<div class="li"><span style="font-size:24px">${esc(n.icon)}</span><div class="g"><b>${esc(n.title)}</b><span class="mu xs">${esc(n.body)}</span><span class="mu xs">${ago(n.at)}</span></div><button class="btn sm red" data-d="${n.id}">Удалить</button></div>`).join('') || '<div class="empty">Пока пусто</div>'}</div>`
+    $('[data-add]', b).onclick = async () => {
+      const d = { icon: $('[data-i]', b).value.trim() || '✨', title: $('[data-t]', b).value.trim(), body: $('[data-b]', b).value.trim() }
+      if (!d.title) return toast('Нужен заголовок', 'err')
+      try { await api('admin/news', d); toast('Опубликовано', 'ok'); this.news(b) } catch (e) { toast(e.message, 'err') }
+    }
+    b.querySelector('.list').onclick = async e => {
+      const x = e.target.closest('[data-d]')
+      if (x && await ask('Удалить запись?', 'Удалить', 'red')) { await api('admin/news/' + x.dataset.d, undefined, 'DELETE'); this.news(b) }
+    }
   },
 
   async set(b) {

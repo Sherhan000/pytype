@@ -9,7 +9,7 @@ import cookieParser from 'cookie-parser'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { Server } from 'socket.io'
-import { db, schema } from './db.js'
+import { db, schema, TZ } from './db.js'
 import { seed } from './seed.js'
 import { cfg, loadCfg, pubCfg, lim, pu, expChars, uSel } from './util.js'
 import { ask, quota, left, SYS } from './ai.js'
@@ -212,10 +212,12 @@ const BL = /\{\{([^{}\n]+?)\}\}/g
 function pubTask(t) {
   if (!t || t.kind === 'type') return t
   const m = t.meta || {}
-  if (t.kind === 'quiz') {
+  if (t.kind === 'quiz' || t.kind === 'next') {
     const opts = Array.isArray(m.options) ? m.options.map(String) : null
-    return { ...t, meta: { q: String(m.q || ''), options: opts, multi: !opts && String(m.answer ?? '').includes('\n') } }
+    return { ...t, meta: { q: String(m.q || ''), options: opts, multi: !opts && String(m.answer ?? '').includes('\n'), hint: String(m.hint || '') } }
   }
+  if (t.kind === 'test') return { ...t, meta: { qs: (Array.isArray(m.qs) ? m.qs : []).map(x => ({ q: String(x.q || ''), code: String(x.code || ''), options: (x.options || []).map(String) })) } }
+  if (t.kind === 'trim') return { ...t, meta: { hint: String(m.hint || ''), n: Array.isArray(m.extra) ? m.extra.length : 0 } }
   if (t.kind === 'fix') return { ...t, meta: { hint: String(m.hint || '') } }
   if (t.kind === 'fill') {
     const w = []
@@ -372,7 +374,12 @@ app.post('/api/run/finish', need, async (req, res) => {
   if (lvl(nu0.xp) > lvl(nu0.xp - gx)) await feed(u.id, 'level', { l: lvl(nu0.xp) })
   const ach = await check(u.id, passed && acc === 100 && task ? ['clean'] : [])
   const nu = await db.one(uSel + ' where id=$1', [u.id])
-  res.json({ wpm, acc, passed, stars, why, coins: gc, xp: gx, cup: g?.cup || null, best: nb, ach, tourn: tr, u: pu(nu) })
+  let beat = null
+  if (task && passed) {
+    const b = await db.one('select count(*)::int n, count(*) filter (where best_wpm < $3)::int s from done where task_id=$1 and user_id<>$2', [task.id, u.id, wpm])
+    if (b.n) beat = Math.round(b.s / b.n * 100)
+  }
+  res.json({ wpm, acc, passed, stars, why, coins: gc, xp: gx, cup: g?.cup || null, best: nb, ach, tourn: tr, beat, u: pu(nu) })
 })
 
 app.post('/api/tasks/:id/answer', need, async (req, res) => {
@@ -381,9 +388,9 @@ app.post('/api/tasks/:id/answer', need, async (req, res) => {
   if (!t) return res.status(404).json({ e: 'Задание не найдено' })
   if (!(await opened(req.u, t.league_id))) return res.status(403).json({ e: 'Задание недоступно' })
   const m = t.meta || {}, a = req.body?.answer
-  let ok = false, bad = []
-  if (t.kind === 'quiz') {
-    if (Array.isArray(m.options)) ok = a !== '' && a != null && Number(a) === Number(m.answer)
+  let ok = false, bad = [], picks = []
+  if (t.kind === 'quiz' || t.kind === 'next') {
+    if (Array.isArray(m.options)) { ok = a !== '' && a != null && Number(a) === Number(m.answer); picks.push([0, String(+a), ok]) }
     else ok = [m.answer, ...(Array.isArray(m.accept) ? m.accept : [])].filter(x => x != null).some(x => outn(x) === outn(a))
   } else if (t.kind === 'fix') {
     ok = [m.fixed, ...(Array.isArray(m.accept) ? m.accept : [])].filter(Boolean).some(x => loose(x) === loose(a))
@@ -392,10 +399,22 @@ app.post('/api/tasks/:id/answer', need, async (req, res) => {
     const g = Array.isArray(a) ? a : []
     bad = ans.map((alts, i) => alts.includes(String(g[i] ?? '').trim().replace(/\s+/g, '')) ? -1 : i).filter(i => i >= 0)
     ok = ans.length > 0 && !bad.length
+  } else if (t.kind === 'test') {
+    const qs = Array.isArray(m.qs) ? m.qs : [], g = Array.isArray(a) ? a : []
+    bad = qs.map((q, i) => Number(g[i]) === Number(q.answer) && g[i] !== '' && g[i] != null ? -1 : i).filter(i => i >= 0)
+    ok = qs.length > 0 && !bad.length
+    qs.forEach((q, i) => { if (g[i] != null && g[i] !== '') picks.push([i, String(+g[i]), Number(g[i]) === Number(q.answer)]) })
+  } else if (t.kind === 'trim') {
+    const want = [...new Set((m.extra || []).map(Number))].sort((x, y) => x - y).join(',')
+    const got = [...new Set((Array.isArray(a) ? a : []).map(Number))].sort((x, y) => x - y).join(',')
+    ok = !!want && want === got
+    if (!ok) bad = [Math.abs((Array.isArray(a) ? a.length : 0) - (m.extra || []).length)]
   }
+  for (const [q, val, k] of picks) await db.q('insert into picks(task_id,user_id,q,val,ok) values($1,$2,$3,$4,$5) on conflict do nothing', [t.id, req.u.id, q, val, k])
+  const dist = picks.length ? await pickDist(t.id) : null
   if (!ok) {
     const r = await db.one('insert into att(user_id,task_id,n) values($1,$2,1) on conflict(user_id,task_id) do update set n=att.n+1 returning n', [req.u.id, t.id])
-    return res.json({ ok: false, tries: r.n, bad })
+    return res.json({ ok: false, tries: r.n, bad: t.kind === 'trim' ? [] : bad, dist: null })
   }
   const r = await db.one('delete from att where user_id=$1 and task_id=$2 returning n', [req.u.id, t.id])
   const n = r?.n || 0, stars = n === 0 ? 3 : n === 1 ? 2 : 1
@@ -405,7 +424,87 @@ app.post('/api/tasks/:id/answer', need, async (req, res) => {
   await after(req.u, t, g, stars)
   if (lvl(nu0.xp) > lvl(nu0.xp - g.gx)) await feed(req.u.id, 'level', { l: lvl(nu0.xp) })
   const ach = await check(req.u.id, n === 0 ? ['clean'] : [])
-  res.json({ ok: true, stars, coins: g.gc, xp: g.gx, cup: g.cup, ach, explain: String(m.explain || ''), u: pu(await db.one(uSel + ' where id=$1', [req.u.id])) })
+  const qx = t.kind === 'test' ? (m.qs || []).map(q => String(q.explain || '')) : null
+  res.json({ ok: true, stars, coins: g.gc, xp: g.gx, cup: g.cup, ach, explain: String(m.explain || ''), qx, dist, extra: t.kind === 'trim' ? m.extra : null, u: pu(await db.one(uSel + ' where id=$1', [req.u.id])) })
+})
+
+async function pickDist(tid) {
+  const rows = await db.q('select q, val, count(*)::int n from picks where task_id=$1 group by 1,2', [tid])
+  const out = {}
+  for (const r of rows) { (out[r.q] ||= { n: 0, v: {} }); out[r.q].v[r.val] = r.n; out[r.q].n += r.n }
+  return out
+}
+
+app.get('/api/tasks/:id/stats', async (req, res) => {
+  const t = await db.one('select id,kind from tasks where id=$1 and active', [+req.params.id])
+  if (!t) return res.status(404).json({ e: 'Задание не найдено' })
+  const me = req.u?.id || 0
+  const d = await db.one(`select count(*)::int done, round(avg(d.best_wpm))::int avg, coalesce(max(d.best_wpm),0)::int top,
+    count(*) filter (where d.stars=3)::int s3,
+    (select best_wpm from done where task_id=$1 and user_id=$2) mine
+    from done d join users u on u.id=d.user_id where d.task_id=$1 and not u.banned`, [t.id, me])
+  const tried = t.kind === 'type'
+    ? (await db.one('select count(distinct user_id)::int n from results where task_id=$1', [t.id])).n
+    : d.done + (await db.one('select count(*)::int n from att where task_id=$1', [t.id])).n
+  let beat = null
+  if (t.kind === 'type' && d.mine != null && d.done > 1) {
+    const b = await db.one('select count(*)::int n from done where task_id=$1 and user_id<>$2 and best_wpm < $3', [t.id, me, d.mine])
+    beat = Math.round(b.n / (d.done - 1) * 100)
+  }
+  const first = t.kind !== 'type' && d.done ? Math.round(d.s3 / d.done * 100) : null
+  res.json({ tried: Math.max(tried, d.done), done: d.done, rate: tried ? Math.round(d.done / Math.max(tried, d.done) * 100) : null, avg: d.avg, top: d.top, mine: d.mine, beat, first })
+})
+
+app.get('/api/analytics', async (req, res) => {
+  const me = req.u?.id || 0
+  const g = await cache('an', 60e3, async () => {
+    const tot = await db.one(`select (select count(*)::int from users where not banned) users,
+      (select count(*)::int from users where seen_at > now() - interval '1 day') today,
+      (select count(*)::int from users where seen_at > now() - interval '7 days') wk,
+      (select count(*)::int from results where created_at > now() - interval '1 day') runs_day,
+      (select count(*)::int from results) runs, (select coalesce(sum(chars),0)::bigint from results) chars,
+      (select count(*)::int from duels) duels, (select count(*)::int from done) solved,
+      (select round(avg(acc))::int from results where created_at > now() - interval '30 days') acc`)
+    const hist = await db.q('select least(best_wpm / 10, 15) b, count(*)::int n from users where best_wpm > 0 and not banned group by 1 order by 1')
+    const hours = await db.q(`select extract(hour from created_at at time zone '${TZ}')::int h, count(*)::int n from results where created_at > now() - interval '30 days' group by 1`)
+    const cups = await db.q(`select l.id, l.name, l.icon, l.color, (select count(*)::int from cups c where c.league_id=l.id) n from leagues l order by l.ord, l.id`)
+    const tasks = await db.q(`select t.id, t.title, t.kind,
+      (select count(*)::int from done d where d.task_id=t.id) done,
+      greatest((select count(distinct user_id)::int from results r where r.task_id=t.id) + (select count(*)::int from att a where a.task_id=t.id), (select count(*)::int from done d where d.task_id=t.id)) tried
+      from tasks t where t.active`)
+    const err = await db.q(`select e.key k, sum((e.value)::int)::int n from users u, jsonb_each_text(u.emap) e where not u.banned group by 1 order by 2 desc limit 12`)
+    const quests = await db.one(`select count(*)::int n, count(*) filter (where claimed ? 'chest')::int c from uq where day = current_date`)
+    const kinds = await db.q(`select t.kind, count(distinct d.user_id)::int n from done d join tasks t on t.id=d.task_id group by 1`)
+    return { tot, hist, hours, cups, tasks, err, quests, kinds }
+  })
+  let you = null
+  if (me) {
+    const u = await db.one('select best_wpm, xp, duel_w, duel_l from users where id=$1', [me])
+    const n = g.tot.users || 1
+    const w = await db.one('select count(*)::int n from users where best_wpm > 0 and not banned and best_wpm < $1', [u.best_wpm])
+    const wn = await db.one('select count(*)::int n from users where best_wpm > 0 and not banned')
+    const x = await db.one('select count(*)::int n from users where not banned and xp < $1', [u.xp])
+    const a = await db.one(`select round(avg(acc))::int a from results where user_id=$1 and created_at > now() - interval '30 days'`, [me])
+    const ab = a.a == null ? null : await db.one(`select count(*)::int n, (select count(distinct user_id)::int from results where created_at > now() - interval '30 days') t from
+      (select user_id, avg(acc) v from results where created_at > now() - interval '30 days' group by 1) s where s.v < $1`, [a.a])
+    const sv = await db.one('select count(*)::int n from done where user_id=$1', [me])
+    you = { wpm: u.best_wpm, fast: u.best_wpm && wn.n > 1 ? Math.round(w.n / (wn.n - 1) * 100) : null, xp: n > 1 ? Math.round(x.n / (n - 1) * 100) : null,
+      acc: a.a, accb: ab && ab.t > 1 ? Math.round(ab.n / (ab.t - 1) * 100) : null, solved: sv.n, duel: u.duel_w + u.duel_l ? Math.round(u.duel_w / (u.duel_w + u.duel_l) * 100) : null }
+  }
+  res.json({ ...g, you })
+})
+
+const CH = new Map()
+async function cache(k, ms, f) {
+  const c = CH.get(k)
+  if (c && Date.now() - c.t < ms) return c.v
+  const v = await f()
+  CH.set(k, { t: Date.now(), v })
+  return v
+}
+
+app.get('/api/news', async (req, res) => {
+  res.json({ rows: await db.q('select id,title,body,icon,at from news order by id desc limit 30') })
 })
 
 app.get('/api/ghost/:id', async (req, res) => {
@@ -457,7 +556,9 @@ app.get('/api/u/:name', async (req, res) => {
   const isf = req.u && !own ? !!(await db.one('select 1 from follows where follower=$1 and followee=$2', [req.u.id, u.id])) : false
   const got = await db.q('select code, at from ach where user_id=$1', [u.id])
   const ach = ACH.map(a => ({ ...a, at: got.find(g => g.code === a.k)?.at || null }))
-  res.json({ u, cups, recent, st: { ...st, ms: +st.ms }, own, fl, isf, ach })
+  const pc = await db.one('select count(*)::int n, count(*) filter (where best_wpm < $1)::int s from users where best_wpm > 0 and not banned and id<>$2', [u.best_wpm, u.id])
+  const fast = u.best_wpm && pc.n ? Math.round(pc.s / pc.n * 100) : null
+  res.json({ u, cups, recent, st: { ...st, ms: +st.ms }, own, fl, isf, ach, fast })
 })
 
 app.get('/api/shop', async (req, res) => {
@@ -577,7 +678,7 @@ app.get('/api/duels', need, async (req, res) => {
 app.get('/api/u/:name/stats', async (req, res) => {
   const u = await db.one('select id from users where lower(name)=lower($1) and not banned', [String(req.params.name)])
   if (!u) return res.status(404).json({ e: 'Пользователь не найден' })
-  const day = "to_char(date_trunc('day', created_at), 'YYYY-MM-DD')"
+  const day = `to_char(created_at at time zone '${TZ}', 'YYYY-MM-DD')`
   const days = await db.q(`select ${day} d, count(*)::int runs, round(avg(wpm))::int avg, max(wpm)::int best, round(avg(acc))::int acc, sum(chars)::int chars
     from results where user_id=$1 and created_at > now() - interval '30 days' group by 1 order by 1`, [u.id])
   const cal = await db.q(`select ${day} d, count(*)::int n from results where user_id=$1 and created_at > now() - interval '182 days' group by 1`, [u.id])
@@ -589,7 +690,7 @@ app.get('/api/u/:name/stats', async (req, res) => {
       count(*) filter (where created_at > now() - interval '7 days')::int r1,
       count(*) filter (where created_at <= now() - interval '7 days')::int r0
     from results where user_id=$1 and created_at > now() - interval '14 days'`, [u.id])
-  const today = (await db.one("select to_char(now(), 'YYYY-MM-DD') d")).d
+  const today = (await db.one("select to_char(current_date, 'YYYY-MM-DD') d")).d
   res.json({ days, cal, wk, today })
 })
 

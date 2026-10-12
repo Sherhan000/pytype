@@ -189,12 +189,14 @@ function evText(e) {
   }
 }
 
+const WD = { uz: ['Ya', 'Du', 'Se', 'Ch', 'Pa', 'Ju', 'Sh'], tg: ['Як', 'Дш', 'Сш', 'Чш', 'Пш', 'Ҷм', 'Шн'] }
+
 function week(u) {
-  const now = new Date(), td = (now.getDay() + 6) % 7, last = u.can_daily ? -1 : 0
-  const days = [...Array(7)].map((_, i) => {
-    const off = i - td, d = new Date(now); d.setDate(now.getDate() + off)
+  const now = new Date(), last = u.can_daily ? -1 : 0
+  const days = [-6, -5, -4, -3, -2, -1, 0].map(off => {
+    const d = new Date(now); d.setDate(now.getDate() + off)
     const on = off <= last && off > last - (u.streak || 0)
-    return `<span class="${on ? 'on' : ''} ${off === 0 ? 'td' : ''} ${off > 0 ? 'fu' : ''}"><i>${on ? '🔥' : off === 0 && u.can_daily ? '🎁' : ''}</i>${esc(d.toLocaleDateString(LOC, { weekday: 'short' }).slice(0, 2))}</span>`
+    return `<span class="${on ? 'on' : ''} ${off === 0 ? 'td' : ''}"><i>${on ? '🔥' : off === 0 && u.can_daily ? '🎁' : ''}</i>${esc(off === 0 ? t('сегодня') : WD[LANG]?.[d.getDay()] || d.toLocaleDateString(LOC, { weekday: 'short' }).slice(0, 2))}</span>`
   }).join('')
   return `<div class="wk" ${u.can_daily ? 'data-act="daily" role="button"' : ''}>${days}</div>`
 }
@@ -320,6 +322,8 @@ App.page('', {
           <a class="tile b" href="#/train"><b>⌨️</b><strong>Тренировка</strong><span>Свой код или наш</span></a>
           <a class="tile g" href="#/top"><b>🏆</b><strong>Рейтинг</strong><span>Кто быстрее всех</span></a>
           <a class="tile v" href="#/ai"><b>✨</b><strong>ИИ-наставник</strong><span>Разберёт любой код</span></a>
+          <a class="tile o" href="#/analytics"><b>📊</b><strong>Аналитика</strong><span>Насколько ты быстрее других</span></a>
+          <a class="tile" href="#/news"><b>📰</b><strong>Что нового</strong><span>Последние обновления</span></a>
         </div>
       </div>
 
@@ -346,19 +350,38 @@ App.page('', {
   }
 })
 
-const KIND_L = { type: '⌨️ Печать кода', quiz: '❓ Что выведет код', fix: '🔧 Найди ошибку', fill: '✍️ Допиши код' }
+const KIND_L = { type: '⌨️ Печать кода', quiz: '❓ Что выведет код', fix: '🔧 Найди ошибку', fill: '✍️ Допиши код', test: '📝 Тест', next: '🔮 Что дальше', trim: '🧹 Убери лишнее' }
 
-function taskSheet(t, l, open) {
-  const m = modal(`<div class="row" style="gap:12px;margin-bottom:12px"><div class="lg-ic" style="--lc:${esc(l.color)}">${esc(l.icon)}</div><div><div class="xs mu" style="font-weight:700">Лига «${esc(l.name)}»</div><h2 style="margin:0">${esc(t.title)}</h2></div></div>
-    <p class="mu">${esc(t.descr)}</p>
-    ${t.kind === 'type' ? `<div class="row mt sm"><span class="tag">от ${t.min_wpm} слов в мин</span><span class="tag">точность от ${t.min_acc}%</span><span class="tag y">+${t.coins} 🪙</span><span class="tag">+${t.xp} XP</span></div>
-    ${t.done ? `<div class="row mt">${starsH(t.done.stars)}<span class="sm mu">лучший результат ${t.done.best_wpm} слов в минуту, ${t.done.best_acc}%</span></div>` : ''}
+async function taskStats(el, tk) {
+  let d
+  try { d = await api(`tasks/${tk.id}/stats`) } catch (e) { return }
+  if (!el.isConnected) return
+  const c = [
+    `<div><b>${d.tried}</b><span>${esc(t('пробовали'))}</span></div>`,
+    `<div><b>${d.rate ?? '—'}${d.rate != null ? '%' : ''}</b><span>${esc(t('дошли до конца'))}</span></div>`,
+    tk.kind === 'type' ? `<div><b>${d.avg ?? '—'}</b><span>${esc(t('средняя скорость'))}</span></div>` : `<div><b>${d.first ?? '—'}${d.first != null ? '%' : ''}</b><span>${esc(t('решают с первой попытки'))}</span></div>`,
+    tk.kind === 'type' ? `<div><b>${d.top || '—'}</b><span>${esc(t('рекорд задания'))}</span></div>` : ''
+  ].join('')
+  el.innerHTML = `<div class="card mt ts"><h3>📊 Статистика задания</h3><div class="ts-g">${c}</div>
+    ${d.beat != null ? `<div class="ts-me">${esc(t('Твой лучший заход быстрее, чем у {0}% игроков', d.beat))}<div class="bar g"><i style="width:${d.beat}%"></i></div></div>` : ''}</div>`
+}
+
+function taskSheet(tk, l, open) {
+  const m = modal(`<div class="row" style="gap:12px;margin-bottom:12px"><div class="lg-ic" style="--lc:${esc(l.color)}">${esc(l.icon)}</div><div><div class="xs mu" style="font-weight:700">Лига «${esc(l.name)}»</div><h2 style="margin:0">${esc(tk.title)}</h2></div></div>
+    <p class="mu">${esc(tk.descr)}</p>
+    ${tk.kind === 'type' ? `<div class="row mt sm"><span class="tag">от ${tk.min_wpm} слов в мин</span><span class="tag">точность от ${tk.min_acc}%</span><span class="tag y">+${tk.coins} 🪙</span><span class="tag">+${tk.xp} XP</span></div>
+    ${tk.done ? `<div class="row mt">${starsH(tk.done.stars)}<span class="sm mu">лучший результат ${tk.done.best_wpm} слов в минуту, ${tk.done.best_acc}%</span></div>` : ''}
     <p class="xs mu mt">Две звезды за скорость в полтора раза выше и точность от 95%. Три звезды за двойную скорость и точность от 98%.</p>`
-    : `<div class="row mt sm"><span class="tag b">${KIND_L[t.kind] || esc(t.kind)}</span><span class="tag y">+${t.coins} 🪙</span><span class="tag">+${t.xp} XP</span></div>
-    ${t.done ? `<div class="row mt">${starsH(t.done.stars)}</div>` : ''}
+    : `<div class="row mt sm"><span class="tag b">${KIND_L[tk.kind] || esc(tk.kind)}</span><span class="tag y">+${tk.coins} 🪙</span><span class="tag">+${tk.xp} XP</span></div>
+    ${tk.done ? `<div class="row mt">${starsH(tk.done.stars)}</div>` : ''}
     <p class="xs mu mt">Три звезды за верный ответ с первой попытки, две со второй, одна потом.</p>`}
-    ${open ? `<a class="btn pri lg wide mt" href="#/task/${t.id}">${I.play} ${t.done ? 'Пройти ещё раз' : 'Начать'}</a>` : `<div class="btn wide mt" style="opacity:.6">${I.lock} Лига закрыта</div>`}`)
+    <p class="sm mt" data-st></p>
+    ${open ? `<a class="btn pri lg wide mt" href="#/task/${tk.id}">${I.play} ${tk.done ? 'Пройти ещё раз' : 'Начать'}</a>` : `<div class="btn wide mt" style="opacity:.6">${I.lock} Лига закрыта</div>`}`)
   m.el.addEventListener('click', e => { if (e.target.closest('a')) m.close() })
+  api(`tasks/${tk.id}/stats`).then(d => {
+    const e = $('[data-st]', m.el)
+    if (e && d.tried) e.innerHTML = `📊 ${esc(t('Прошли {0}% из {1} пробовавших', d.rate, d.tried))}${d.avg ? ' · ' + esc(t('в среднем {0} сл/мин', d.avg)) : ''}`
+  }).catch(() => {})
 }
 
 App.page('path', {
@@ -416,9 +439,11 @@ App.page('task', {
       </div>
       <div class="row mb sm">${tk.kind === 'type' ? `<span class="tag">нужно от ${tk.min_wpm} слов в мин</span><span class="tag">точность от ${tk.min_acc}%</span>${done ? `<span class="tag ok">лучший ${done.best_wpm} слов в мин</span>` : ''}`
         : `<span class="tag b">${KIND_L[tk.kind] || esc(tk.kind)}</span><span class="tag">★★★ с первой попытки</span>`}</div>
-      <div data-tr></div>`
+      <div data-tr></div>
+      <div data-ts></div>`
     const box = $('[data-tr]', v)
     const K = App.kinds[tk.kind]
+    taskStats($('[data-ts]', v), tk)
     const nextTask = async () => {
       const { leagues } = await api('leagues')
       const all = leagues.filter(l => l.open).flatMap(l => l.tasks)
@@ -428,13 +453,13 @@ App.page('task', {
       else { toast('Все открытые задания пройдены', 'ok'); location.hash = '#/path' }
     }
     if (tk.kind !== 'type') {
-      if (K) return K.render(box, tk, { next: nextTask, done })
+      if (K) return K.render(box, tk, { next: nextTask, done, solved: () => setTimeout(() => taskStats($('[data-ts]', v), tk), 400) })
       box.innerHTML = '<div class="card empty"><b>🧩</b>Этот тип задания скоро появится</div>'
       return
     }
     box.insertAdjacentHTML('beforebegin', `<div class="row mb ghosts" data-gh><span class="sm mu" style="font-weight:700">${I.ghost.replace('<svg', '<svg style="width:18px;height:18px;vertical-align:-4px"')} Призрак</span>
       <button class="chip on" data-g="">Выкл</button>${S.u ? '<button class="chip" data-g="me">Мой рекорд</button>' : ''}<button class="chip" data-g="top">Лучший игрок</button></div>`)
-    const tr = Trainer(box, { task: true, taskId: tk.id, code: tk.code, name: tk.title, onNext: nextTask })
+    const tr = Trainer(box, { task: true, taskId: tk.id, code: tk.code, name: tk.title, onNext: nextTask, onResult: () => taskStats($('[data-ts]', v), tk) })
     $('[data-gh]', v).onclick = async e => {
       const b = e.target.closest('[data-g]')
       if (!b) return
@@ -459,10 +484,11 @@ App.page('train', {
     let cur = ls.g('tlast', null) || PRACTICE[0]
     v.innerHTML = `
       <div class="row mb">
-        <div style="flex:1;min-width:200px"><div class="disp" style="font-size:20px" data-tt></div><div class="sm mu">Свободная тренировка, за неё тоже дают опыт и немного монет</div></div>
+        <div style="flex:1;min-width:200px"><div class="disp" style="font-size:20px" data-tt></div><div class="sm mu">Свой код, файл или наш. Можно на время и по частям</div></div>
         <button class="btn sm" data-b="prev" title="Предыдущий кусок" hidden>${I.prev}</button>
         <button class="btn sm" data-b="rnd">${I.dice}<span class="hide-m">Случайный</span></button>
-        <button class="btn sm" data-b="own">${I.plus}<span>Свой код</span></button>
+        <label class="btn sm y" title="Открой .py, .txt или любой файл с кодом">📂<span>Открыть файл</span><input type="file" hidden data-file accept=".py,.pyw,.txt,.js,.ts,.json,.html,.css,.md,.sql,.java,.c,.cpp,.cs,.go,.rs,.php,.rb,.kt,.swift,.sh,.yml,.yaml,.toml,.ini,text/*"></label>
+        <button class="btn sm" data-b="own">${I.plus}<span class="hide-m">Свой код</span></button>
         <button class="btn sm b" data-b="run">${I.play}<span class="hide-m">Запустить</span></button>
       </div>
       <div class="scrollx mb" data-lib></div>
@@ -471,8 +497,32 @@ App.page('train', {
     const tr = Trainer($('[data-tr]', v), {
       onNext: () => { const a = all(), i = a.findIndex(x => x.name === cur.name); pick(a[(i + 1) % a.length]) },
       onLoad: s => { $('[data-b=prev]', v).hidden = s.n < 2 },
-      onPaste: t => { cur = { name: 'из буфера', code: t }; ls.s('tlast', cur); $('[data-tt]', v).textContent = cur.name }
+      onPaste: t => { cur = { name: 'из буфера', code: t }; ls.s('tlast', cur); $('[data-tt]', v).textContent = cur.name },
+      more: () => PRACTICE[Math.random() * PRACTICE.length | 0].code
     })
+    function openFile(f) {
+      if (!f) return
+      if (f.size > 400e3) return toast('Файл слишком большой, максимум 400 КБ', 'err')
+      const r = new FileReader()
+      r.onload = () => {
+        const txt = String(r.result || '')
+        if (!prep(txt).trim()) return toast('В файле нет текста', 'err')
+        if (/\u0000/.test(txt)) return toast('Это не текстовый файл', 'err')
+        const n = txt.split('\n').length
+        if (n > 60 && !tr.cfg.chunk && !tr.cfg.time) { tr.cfg.chunk = 25; ls.s('tcfg', tr.cfg); const c = $('[data-chunk]', v); if (c) c.value = '25'; toast(t('В файле {0} строк, разбил на куски по 25. Листай стрелками или Ctrl+Enter', n), 'ok', 5000) }
+        const s = { name: f.name, code: txt }
+        if (txt.length < 120e3) ls.s('mine', [...mine().filter(x => x.name !== s.name), s].slice(-30))
+        pick(s)
+      }
+      r.readAsText(f)
+    }
+    $('[data-file]', v).onchange = e => { openFile(e.target.files[0]); e.target.value = '' }
+    const dg = {
+      dragover: e => { if (e.dataTransfer?.types?.includes('Files')) { e.preventDefault(); v.classList.add('drop') } },
+      dragleave: e => { if (!v.contains(e.relatedTarget)) v.classList.remove('drop') },
+      drop: e => { if (!e.dataTransfer?.files?.length) return; e.preventDefault(); v.classList.remove('drop'); openFile(e.dataTransfer.files[0]) }
+    }
+    for (const k in dg) v.addEventListener(k, dg[k])
     function pick(s) {
       cur = s; ls.s('tlast', { name: s.name, code: s.code })
       $('[data-tt]', v).textContent = s.name
@@ -512,7 +562,7 @@ App.page('train', {
       $('[data-sv]', m.el).onclick = () => go(true)
     }
     pick(cur)
-    return () => tr.destroy()
+    return () => { tr.destroy(); for (const k in dg) v.removeEventListener(k, dg[k]); v.classList.remove('drop') }
   }
 })
 
@@ -775,7 +825,7 @@ async function profile(v, name) {
       </div>
     </div>
     <div class="grid g4 mt">
-      <div class="card stat y"><b>${u.best_wpm}</b><span>лучшая скорость</span></div>
+      <div class="card stat y"><b>${u.best_wpm}</b><span>лучшая скорость</span>${p.fast != null ? `<em class="pct">${esc(t('быстрее {0}% игроков', p.fast))}</em>` : ''}</div>
       <div class="card stat g"><b>${p.st.done}</b><span>заданий, ${p.st.stars} ★</span></div>
       <div class="card stat o"><b>${u.duel_w}<span class="mu" style="font-size:18px"> / ${u.duel_l}</span></b><span>дуэли: победы и поражения</span></div>
       <div class="card stat bl"><b>${hrs >= 1 ? hrs.toFixed(1) + ' ч' : Math.round(hrs * 60) + ' мин'}</b><span>за клавиатурой</span></div>
