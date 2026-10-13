@@ -54,7 +54,7 @@ function plx(n, c) {
   return Array.isArray(f) ? (n === 1 ? f[0] : f[1]) : f
 }
 
-const SKIP = 'script,style,code,pre,textarea,.code,.ed .scr,.ed-top,.msgs .t,.bub,.nm,.tx b,.qcode,[data-notr]'
+const SKIP = 'script,style,code,pre,textarea,.code,.ed .scr,.ed-top,.exl,.ls-b,.lw-i,.lw-r,.msgs .t,.bub,.nm,.tx b,.qcode,[data-notr]'
 const CYR = /[а-яё]/i
 
 function trNode(n) {

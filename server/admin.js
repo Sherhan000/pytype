@@ -7,7 +7,23 @@ const T = {
   tasks: { f: ['league_id', 'title', 'descr', 'kind', 'code', 'lvl', 'min_wpm', 'min_acc', 'coins', 'xp', 'ord', 'active', 'meta'], o: 'ord,id' },
   leagues: { f: ['name', 'icon', 'color', 'ord', 'reward'], o: 'ord,id' },
   items: { f: ['kind', 'name', 'value', 'price', 'ord', 'active'], o: 'kind,ord,id' },
-  news: { f: ['title', 'body', 'icon'], o: 'id desc' }
+  news: { f: ['title', 'body', 'icon'], o: 'id desc' },
+  lessons: { f: ['title', 'descr', 'kind', 'src', 'media_id', 'task_id', 'ord', 'active'], o: 'ord,id' }
+}
+
+export function ytId(s) {
+  s = String(s || '').trim()
+  const m = s.match(/(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/|v\/))([A-Za-z0-9_-]{11})/) || s.match(/^([A-Za-z0-9_-]{11})$/)
+  return m ? m[1] : null
+}
+
+function lessonCheck(b) {
+  if ('title' in b && !b.title.trim()) return 'Нужно название'
+  if (b.kind === 'yt') { const id = ytId(b.src); if (!id) return 'Не похоже на ссылку YouTube'; b.src = id }
+  else if (b.kind === 'url') { if (!/^https:\/\/\S+$/.test(b.src || '')) return 'Ссылка на видео должна начинаться с https://' }
+  else if (b.kind === 'file') { if (!b.media_id) return 'Сначала загрузи файл' }
+  else return 'Неизвестный тип урока'
+  return null
 }
 
 function pick(b, f) {
@@ -15,7 +31,7 @@ function pick(b, f) {
   for (const k of f) {
     if (!b || !(k in b)) continue
     let v = b[k]
-    if (k === 'league_id') v = v === '' || v == null || +v === 0 ? null : +v
+    if (['league_id', 'media_id', 'task_id'].includes(k)) v = v === '' || v == null || +v === 0 ? null : +v
     else if (k === 'meta') v = JSON.stringify(typeof v === 'string' ? JSON.parse(v || '{}') : v || {})
     else if (k === 'active') v = v === true || v === 'true' || v === 1
     else if (['lvl', 'min_wpm', 'min_acc', 'coins', 'xp', 'ord', 'price', 'reward'].includes(k)) v = Math.round(+v || 0)
@@ -32,12 +48,14 @@ export default function admin(app, { adm, modr, io }) {
     })
     app.post(`/api/admin/${t}`, adm, async (req, res) => {
       const b = pick(req.body, f), k = Object.keys(b)
+      if (t === 'lessons') { const e = lessonCheck(b); if (e) return res.status(400).json({ e }) }
       if (!k.length) return res.status(400).json({ e: 'Пустые данные' })
       const r = await db.one(`insert into ${t}(${k.join(',')}) values(${k.map((_, i) => '$' + (i + 1)).join(',')}) returning *`, k.map(x => b[x]))
       res.json({ row: r })
     })
     app.put(`/api/admin/${t}/:id`, adm, async (req, res) => {
       const b = pick(req.body, f), k = Object.keys(b)
+      if (t === 'lessons') { const e = lessonCheck(b); if (e) return res.status(400).json({ e }) }
       if (!k.length) return res.status(400).json({ e: 'Пустые данные' })
       if (t === 'tasks' && 'code' in b) {
         const old = await db.one('select code from tasks where id=$1', [+req.params.id])
@@ -47,7 +65,9 @@ export default function admin(app, { adm, modr, io }) {
       res.json({ row: r })
     })
     app.delete(`/api/admin/${t}/:id`, adm, async (req, res) => {
+      const lm = t === 'lessons' ? await db.one('select media_id from lessons where id=$1', [+req.params.id]) : null
       await db.q(`delete from ${t} where id=$1`, [+req.params.id])
+      if (lm?.media_id) await db.q('delete from media where id=$1 and not exists (select 1 from lessons where media_id=$1)', [lm.media_id])
       res.json({ ok: 1 })
     })
   }

@@ -44,8 +44,39 @@ export async function history(n = 60) {
   return r.reverse().map(x => shape(x, x.bot || !x.uid ? null : { id: x.uid, name: x.name, avatar: x.avatar, frame: x.frame, ncolor: x.ncolor, title: x.title, role: x.role }))
 }
 
+const norm = t => t.toLowerCase().replace(/[^a-zа-яё0-9ӣӯқғҳҷ]+/g, '')
+function near(a, b) {
+  if (!a || !b) return false
+  if (a === b) return true
+  if (Math.min(a.length, b.length) < 6) return false
+  const g = x => { const r = new Set(); for (let i = 0; i < x.length - 1; i++) r.add(x.slice(i, i + 2)); return r }
+  const A = g(a), B = g(b)
+  let n = 0
+  for (const x of A) if (B.has(x)) n++
+  return n / Math.max(A.size, B.size) > 0.8
+}
+function tame(t) {
+  const L = t.replace(/[^A-Za-zА-Яа-яЁё]/g, '')
+  if (L.length >= 8 && L.replace(/[^A-ZА-ЯЁ]/g, '').length / L.length > 0.7) t = t.toLowerCase()
+  let e = 0
+  return t.replace(/\p{Extended_Pictographic}/gu, m => ++e > 8 ? '' : m)
+}
+
 export default function chat(io) {
-  const last = new Map()
+  const last = new Map(), hist = new Map(), strikes = new Map(), aiWait = new Set()
+
+  async function strike(me) {
+    const now = Date.now(), k = strikes.get(me.id) || { n: 0, at: 0, lvl: 0 }
+    if (now - k.at > 300e3) k.n = 0
+    k.n++; k.at = now
+    strikes.set(me.id, k)
+    if (k.n < 4) return null
+    k.n = 0
+    const min = [1, 5, 30, 120][Math.min(k.lvl++, 3)]
+    await db.q(`update users set muted_until=now()+($2::int * interval '1 minute') where id=$1`, [me.id, min])
+    io.to('g').emit('sys', `${me.name} получил мут на ${min} мин за спам`)
+    return min
+  }
 
   async function post(text) {
     const m = await db.one('insert into msgs(user_id,bot,text) values(null,true,$1) returning *', [text.slice(0, 2000)])
@@ -88,7 +119,7 @@ export default function chat(io) {
         const c = cfg.chat
         if (!c.on && !st) return ok('Чат сейчас выключен')
         if (me.muted_until && new Date(me.muted_until) > new Date()) {
-          return ok('Ты в муте до ' + new Date(me.muted_until).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }))
+          return ok(`Ты в муте ещё ${Math.ceil((new Date(me.muted_until) - Date.now()) / 60000)} мин`)
         }
         if (!st && me.xp < c.xp) return ok(`Писать в чат можно с ${c.xp} XP. Пройди пару заданий`)
         if (!st && c.age && Date.now() - new Date(me.created_at) < c.age * 60000) return ok(`Писать можно через ${c.age} мин после регистрации`)
@@ -96,21 +127,27 @@ export default function chat(io) {
         if (!t) return ok('Пустое сообщение')
         if (t.length > c.len && !st) return ok(`Максимум ${c.len} символов`)
         if (!st && !c.links && LINK.test(t)) return ok('Ссылки в чате запрещены')
+        const isAi = /^(\/ai|@ии|@ai)\s+/i.test(t)
         if (!st) {
-          const l = last.get(me.id)
-          if (l && Date.now() - l.at < c.slow * 1000) return ok(`Медленный режим: одно сообщение в ${c.slow} сек`)
-          if (l && l.t === t.toLowerCase()) return ok('Не повторяй одно и то же')
-          if (!lim('chat' + me.id, c.burst, 30000)) return ok('Слишком часто, подожди немного')
+          const l = last.get(me.id), nt = norm(t), h = hist.get(me.id) || []
+          const no = async m => { const mm = await strike(me); return ok(mm ? `Мут на ${mm} мин за спам` : m) }
+          if (l && Date.now() - l.at < c.slow * 1000) return no(`Медленный режим: одно сообщение в ${c.slow} сек`)
+          if (h.some(x => near(x, nt))) return no('Почти то же самое уже было, напиши что-то новое')
+          if (!lim('chat' + me.id, c.burst, 30000)) return no('Слишком часто, подожди немного')
+          if (isAi && aiWait.has(me.id)) return ok('Подожди, ИИ ещё отвечает на твой прошлый вопрос')
+          if (isAi && !lim('chai', 6, 60000)) return ok('ИИ в чате сейчас занят, спроси через минуту или во вкладке «ИИ-наставник»')
+          hist.set(me.id, [nt, ...h].slice(0, 4))
+          t = tame(t)
         }
         last.set(me.id, { at: Date.now(), t: t.toLowerCase() })
         if (c.filter) t = censor(t)
         const m = await db.one('insert into msgs(user_id,text) values($1,$2) returning *', [me.id, t])
         io.to('g').emit('msg', shape(m, me))
-        ok()
+        if (typeof cb === 'function') cb({ ok: 1, wait: st ? 0 : c.slow })
         await db.q('update users set msgs=msgs+1 where id=$1', [me.id])
         bump(me.id, { chat: 1 }).catch(() => {})
         if (me.msgs + 1 >= 50) check(me.id).catch(() => {})
-        if (cfg.ai.on && cfg.ai.chat && process.env.GROQ_API_KEY && /^(\/ai|@ии|@ai)\s+/i.test(t)) bot(me, t)
+        if (cfg.ai.on && cfg.ai.chat && process.env.GROQ_API_KEY && isAi) { aiWait.add(me.id); bot(me, t).finally(() => aiWait.delete(me.id)) }
       } catch (e) {
         console.error(e)
         ok('Ошибка сервера')

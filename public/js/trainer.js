@@ -91,39 +91,30 @@ async function runPy(code, box) {
 function Trainer(root, o = {}) {
   const task = !!o.task, duel = !!o.duel, mini = !!o.mini, free = !task && !duel && !mini
   const touch = matchMedia('(pointer:coarse)').matches
-  const cfg = Object.assign({ strict: false, indent: true, nocom: false, snd: false, chunk: 0, view: 'all', time: 0, fs: innerWidth < 600 ? 14 : 18 }, ls.g('tcfg', {}))
-  if (duel || mini) { cfg.chunk = 0; cfg.nocom = false; cfg.strict = false; cfg.view = 'all' }
+  const cfg = Object.assign({ strict: false, indent: true, nocom: false, snd: false, exp: true, chunk: 0, view: 'all', time: 0, fs: innerWidth < 600 ? 14 : 18 }, ls.g('tcfg', {}))
+  if (duel || mini) { cfg.chunk = 0; cfg.nocom = false; cfg.strict = false; cfg.view = 'all'; cfg.exp = false }
   if (!free) cfg.time = 0
   const save = () => { if (!duel && !mini) ls.s('tcfg', cfg) }
-  const opt = (k, t, tip) => `<button class="chip" data-o="${k}" title="${tip}">${t}</button>`
   const SYM = ['Tab', '(', ')', ':', '"', "'", '[', ']', '{', '}', '=', '_', '.', ',', '#', '+', '-', '*', '/', '<', '>', '%', '!', '⌫']
+  const VW = { all: 'Весь код', line: 'По строкам', word: 'По словам' }, TMS = [0, 30, 60, 120, 180, 300]
+  const tml = s => s ? (s < 60 ? s + ' ' + t('сек') : s / 60 + ' ' + t('мин')) : t('Таймер')
   root.innerHTML = `<div class="tr">
-    ${mini ? '' : `<div class="tr-opts">
-      ${duel ? '' : opt('strict', 'Строгий режим', 'Курсор стоит, пока не нажмёшь правильную клавишу')}
-      ${opt('indent', 'Автоотступы', 'После Enter отступ ставится сам')}
-      ${free ? opt('nocom', 'Без комментариев', 'Убирает комментарии из кода') : ''}
-      ${opt('snd', 'Звук ошибки', 'Короткий сигнал при опечатке')}
-      ${duel ? '' : `<select class="in sel" data-view title="Как показывать код">
-        <option value="all">👁 весь код</option><option value="line">👁 по строкам</option><option value="word">👁 по словам</option></select>`}
-      ${free ? `<select class="in sel" data-chunk title="Делить длинный код на куски">
-        <option value="0">✂ без разбивки</option><option value="5">✂ по 5 строк</option><option value="10">✂ по 10 строк</option><option value="15">✂ по 15 строк</option><option value="25">✂ по 25 строк</option><option value="40">✂ по 40 строк</option></select>
-        <select class="in sel" data-time title="Печать на время">
-        <option value="0">⏱ без таймера</option><option value="30">⏱ 30 секунд</option><option value="60">⏱ 1 минута</option><option value="120">⏱ 2 минуты</option><option value="180">⏱ 3 минуты</option><option value="300">⏱ 5 минут</option></select>` : ''}
-      <span style="flex:1"></span>
-      <button class="btn sm" data-fs="-2" title="Мельче">A−</button><button class="btn sm" data-fs="2" title="Крупнее">A+</button>
+    ${mini ? '' : `<div class="tr-tools">
+      ${duel ? '' : `<button class="tool" data-tv title="Как показывать код">👁 <span></span></button>`}
+      ${free ? `<button class="tool" data-tt title="Печать на время">⏱ <span></span></button>` : ''}
+      ${duel ? '' : `<button class="tool" data-te title="Пояснения к строкам во время печати">💬 <span>Пояснения</span></button>`}
+      <span class="sp"></span>
+      <button class="tool ic" data-ts title="Настройки">${I.gear || '⚙'}</button>
     </div>`}
-    ${mini ? '' : `<div class="tr-live">
-      <div class="hi"><b data-l="w">0</b><span>слов в мин</span></div>
-      <div><b data-l="a">100%</b><span>точность</span></div>
-      <div class="tm"><b data-l="t">${free && cfg.time ? fmt(cfg.time * 1000) : '0:00'}</b><span data-tl>${free && cfg.time ? 'осталось' : 'время'}</span></div>
-      <div><b data-l="c">0</b><span>знаков в мин</span></div>
-      <div><b data-l="e">0</b><span>ошибок</span></div>
-    </div>`}
-    <div class="prog"><i></i><b class="gh" hidden></b></div>
     <div class="ed">
       <textarea class="ki" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Ввод кода"></textarea>
-      <div class="ed-top"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span data-fn style="margin-left:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span><span style="flex:1"></span><span data-pos></span></div>
+      <div class="ed-top"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span data-fn class="fn"></span><span style="flex:1"></span><span data-pos></span></div>
+      <div class="exl" hidden><span class="exn"></span><span class="ext"></span><span class="exs"></span></div>
       <div class="scr"><div class="gut"></div><div class="cb"><div class="hl"></div><pre class="code"></pre><div class="car"></div></div></div>
+      <div class="ed-st">
+        <div class="prog"><i></i><b class="gh" hidden></b></div>
+        ${mini ? '' : `<span class="st w"><b data-l="w">0</b> сл/мин</span><span class="st"><b data-l="a">100%</b></span><span class="st tm"><b data-l="t">${free && cfg.time ? fmt(cfg.time * 1000) : '0:00'}</b> <span data-tl>${free && cfg.time ? 'осталось' : ''}</span></span><span class="st e hide-m"><b data-l="e">0</b> ошибок</span><span class="st hide-m"><b data-l="c">0</b> зн/мин</span><span class="sp"></span><span class="st lc hide-m" data-lc></span>`}
+      </div>
       <div class="veil"><span>${touch ? 'Нажми, чтобы печатать' : 'Кликни и начинай печатать'}</span></div>
       <div class="warn"></div>
       <div class="res" hidden></div>
@@ -143,10 +134,10 @@ function Trainer(root, o = {}) {
   const wrap = R('.ed'), ki = R('.ki'), scr = R('.scr'), code = R('.code'), gut = R('.gut'), hlb = R('.hl'), car = R('.car'), cb = R('.cb'), res = R('.res')
   let src = '', name = '', parts = [], pi = 0
   let T = '', sp = [], st = [], au = [], he = [], pos = 0, p0 = 0, keys = 0, errs = 0, t0 = 0, tE = 0, done = false, em = {}, tk = null, last = -1, gl = -1, tyT, runP = null, dead = false, lastProg = 0
-  let rec = [], gh = null, ghEl = null, ghRaf = 0, V = 0
+  let rec = [], gh = null, ghEl = null, ghRaf = 0, V = 0, LN = new Int32Array(1), okN = 0, liveQ = 0
   const timed = () => free && cfg.time > 0
   const typable = c => c === '\n' || (c >= ' ' && c <= '~') || (c >= '\u00c0' && c <= '\u052f')
-  const gbar = R('.prog .gh')
+  const gbar = R('.prog .gh'), lcEl = R('[data-lc]')
   const SENT = '  '
 
   const applyFs = () => root.style.setProperty('--fs', cfg.fs + 'px')
@@ -201,17 +192,21 @@ function Trainer(root, o = {}) {
     T = parts[pi] || ''
     clearInterval(tk); tk = null
     const c = tok(T), f = document.createDocumentFragment()
-    code.textContent = ''; sp = []
+    code.textContent = ''; sp = []; LN = new Int32Array(T.length + 1)
+    let row = document.createElement('div'), ln = 0
     for (let i = 0; i < T.length; i++) {
       const s = document.createElement('span')
-      if (T[i] === '\n') { s.className = 'nl'; s.textContent = '↵'; f.append(s, '\n') }
-      else { s.className = 't-' + c[i]; s.textContent = T[i]; f.append(s) }
+      LN[i] = ln
+      if (T[i] === '\n') { s.className = 'nl'; s.textContent = '↵'; row.append(s); f.append(row); row = document.createElement('div'); ln++ }
+      else { s.className = 't-' + c[i]; s.textContent = T[i]; row.append(s) }
       sp.push(s)
     }
+    LN[T.length] = ln
+    f.append(row)
     code.append(f)
     gut.innerHTML = Array.from({ length: T.split('\n').length }, (_, i) => '<div>' + (i + 1) + '</div>').join('')
     st = new Array(T.length).fill(0); au = new Array(T.length).fill(0); he = new Array(T.length).fill(0)
-    pos = 0; keys = 0; errs = 0; t0 = 0; tE = 0; done = false; em = {}; last = -1; gl = -1; runP = null; rec = []
+    pos = 0; keys = 0; errs = 0; t0 = 0; tE = 0; done = false; em = {}; last = -1; gl = -1; runP = null; rec = []; okN = 0
     cancelAnimationFrame(ghRaf)
     if (cfg.indent) while (pos < T.length && T[pos] === ' ') { st[pos] = 1; au[pos] = 1; paint(pos); pos++ }
     skip()
@@ -223,8 +218,9 @@ function Trainer(root, o = {}) {
     const nm = (name || 'code').replace(/\s+/g, '_').slice(0, 40)
     R('[data-fn]').textContent = /\.\w{1,6}$/.test(nm) ? nm : nm.toLowerCase() + '.py'
     R('[data-pos]').textContent = timed() ? '⏱ ' + fmt(cfg.time * 1000) : parts.length > 1 ? t('кусок {0} из {1}', pi + 1, parts.length) : pl(T.split('\n').length, 'строка', 'строки', 'строк')
-    if (!mini) { R('[data-tl]').textContent = t(timed() ? 'осталось' : 'время') }
-    move(); live(); ghostDraw()
+    if (!mini) R('[data-tl]').textContent = timed() ? t('осталось') : ''
+    exL = -1
+    move(); live(); ghostDraw(); exFetch()
     o.onLoad?.({ pi, n: parts.length })
   }
 
@@ -286,11 +282,12 @@ function Trainer(root, o = {}) {
     const s = sp[pos]
     if (!s || done) { car.style.display = hlb.style.display = 'none'; return }
     s.classList.add('cur'); last = pos
-    let ln = 0
-    for (let i = 0; i < pos; i++) if (T[i] === '\n') ln++
+    const ln = LN[pos]
     if (gl >= 0 && gut.children[gl]) gut.children[gl].classList.remove('on')
     gl = ln
     gut.children[ln]?.classList.add('on')
+    exShow()
+    if (lcEl) { let c = pos; while (c > 0 && T[c - 1] !== '\n') c--; lcEl.textContent = t('Стр {0}, кол {1}', ln + 1, pos - c + 1) }
     if (!s.offsetParent) return
     const x = s.offsetLeft, y = s.offsetTop, hh = s.offsetHeight, lh = cfg.fs * 1.65
     car.style.display = hlb.style.display = 'block'
@@ -305,8 +302,7 @@ function Trainer(root, o = {}) {
   function pulse() { wrap.classList.add('ty'); clearTimeout(tyT); tyT = setTimeout(() => wrap.classList.remove('ty'), 600) }
 
   function calc() {
-    let ok = 0
-    for (let i = 0; i < pos; i++) if ((st[i] & 1) && !au[i]) ok++
+    const ok = okN
     const ms = t0 ? (done ? tE : performance.now()) - t0 : 0, mn = ms / 60000
     return { ok, ms, wpm: mn > .005 ? Math.round(ok / 5 / mn) : 0, cpm: mn > .005 ? Math.round(ok / mn) : 0, acc: keys ? Math.round(Math.max(0, keys - errs) / keys * 100) : 100 }
   }
@@ -335,20 +331,24 @@ function Trainer(root, o = {}) {
     const e = T[pos], ok = c === e
     if (!ok) { errs++; em[e] = (em[e] || 0) + 1; he[pos] = 1; if (cfg.snd) beep(); if (navigator.vibrate && touch) navigator.vibrate(18) }
     if (!ok && cfg.strict) { const s = sp[pos]; s.classList.remove('miss'); void s.offsetWidth; s.classList.add('miss'); live(); return }
-    st[pos] = ok ? (he[pos] ? 3 : 1) : 2; paint(pos); pos++
+    st[pos] = ok ? (he[pos] ? 3 : 1) : 2; paint(pos)
+    if (ok) okN++
+    pos++
     if (ok && c === '\n' && cfg.indent) while (pos < T.length && T[pos] === ' ') { st[pos] = 1; au[pos] = 1; paint(pos); pos++ }
     skip()
     mark()
     if (pos >= T.length) return finish()
-    move(); live()
+    move(); liveSoon()
   }
+
+  function liveSoon() { if (!liveQ) liveQ = requestAnimationFrame(() => { liveQ = 0; live() }) }
 
   function tabk() {
     if (T[pos] === ' ') { let n = 0; while (n < 4 && !done && T[pos] === ' ') { type(' '); n++ } }
     else type('\t')
   }
 
-  function un() { pos--; st[pos] = 0; au[pos] = 0; paint(pos) }
+  function un() { pos--; if ((st[pos] & 1) && !au[pos]) okN--; st[pos] = 0; au[pos] = 0; paint(pos) }
   function back(w) {
     if (cfg.strict || done || pos <= p0) return
     pulse()
@@ -363,7 +363,7 @@ function Trainer(root, o = {}) {
       if (pos > p0) un()
     }
     mark()
-    move(); live()
+    move(); liveSoon()
   }
 
   async function finish() {
@@ -529,23 +529,71 @@ function Trainer(root, o = {}) {
     if (a === 'ai') explain(src)
   })
 
-  $$('[data-o]', root).forEach(b => {
-    b.classList.toggle('on', !!cfg[b.dataset.o])
-    b.onclick = () => {
-      const k = b.dataset.o
-      cfg[k] = !cfg[k]; b.classList.toggle('on', cfg[k]); save()
-      if (k === 'nocom') load(src, name)
-      else if (k !== 'snd') start()
-      focus()
-    }
-  })
-  const ch = R('[data-chunk]')
-  if (ch) { ch.value = String(cfg.chunk); ch.onchange = () => { cfg.chunk = +ch.value; save(); load(src, name); focus() } }
-  const vw = R('[data-view]')
-  if (vw) { vw.value = cfg.view; vw.onchange = () => { cfg.view = vw.value; save(); start(); focus() } }
-  const tm = R('[data-time]')
-  if (tm) { tm.value = String(cfg.time); tm.onchange = () => { cfg.time = +tm.value; save(); if (ch) ch.disabled = !!cfg.time; load(src, name); focus() }; if (ch) ch.disabled = !!cfg.time }
-  $$('[data-fs]', root).forEach(b => b.onclick = () => { cfg.fs = Math.min(30, Math.max(11, cfg.fs + +b.dataset.fs)); save(); applyFs(); move(); focus() })
+  function tools() {
+    const v = R('[data-tv] span'), tt = R('[data-tt] span'), te = R('[data-te]')
+    if (v) v.textContent = t(VW[cfg.view] || VW.all)
+    if (tt) { tt.textContent = tml(cfg.time); R('[data-tt]').classList.toggle('on', !!cfg.time) }
+    if (te) te.classList.toggle('on', !!cfg.exp)
+    R('[data-tv]')?.classList.toggle('on', cfg.view !== 'all')
+  }
+  tools()
+  R('[data-tv]')?.addEventListener('click', () => { const k = Object.keys(VW); cfg.view = k[(k.indexOf(cfg.view) + 1) % k.length]; save(); tools(); start(); focus() })
+  R('[data-tt]')?.addEventListener('click', () => { cfg.time = TMS[(TMS.indexOf(cfg.time) + 1) % TMS.length]; save(); tools(); load(src, name); focus() })
+  R('[data-te]')?.addEventListener('click', () => { cfg.exp = !cfg.exp; save(); tools(); exFetch(); exShow(); focus() })
+  R('[data-ts]')?.addEventListener('click', () => settings())
+
+  function settings() {
+    const row = (k, l, d) => `<button class="set ${cfg[k] ? 'on' : ''}" data-k="${k}"><span><b>${l}</b><small>${d}</small></span><i></i></button>`
+    const m = modal(`<h2>Настройки печати</h2><div class="sets">
+      ${duel ? '' : row('strict', 'Строгий режим', 'Курсор не двигается, пока не нажмёшь правильную клавишу')}
+      ${row('indent', 'Автоотступы', 'После Enter отступ ставится сам')}
+      ${duel ? '' : row('exp', 'Пояснения к строкам', 'Над кодом подсказка, что делает текущая строка')}
+      ${free ? row('nocom', 'Без комментариев', 'Убрать из кода строки с #') : ''}
+      ${row('snd', 'Звук ошибки', 'Короткий сигнал при опечатке')}
+      ${free ? `<label class="set sel"><span><b>Делить длинный код</b><small>Печатать большой файл частями</small></span><select class="in" data-ch>${[0, 5, 10, 15, 25, 40].map(n => `<option value="${n}" ${cfg.chunk === n ? 'selected' : ''}>${n ? t('по {0} строк', n) : t('не делить')}</option>`).join('')}</select></label>` : ''}
+      <div class="set sel"><span><b>Размер шрифта</b><small data-fz>${cfg.fs}px</small></span><div class="row" style="gap:6px;flex-wrap:nowrap"><button class="btn sm" data-z="-2">A−</button><button class="btn sm" data-z="2">A+</button></div></div>
+    </div><button class="btn pri wide mt" data-x>Готово</button>`)
+    m.el.addEventListener('click', e => {
+      const b = e.target.closest('.set[data-k]'), z = e.target.closest('[data-z]')
+      if (b) {
+        const k = b.dataset.k
+        cfg[k] = !cfg[k]; b.classList.toggle('on', cfg[k]); save(); tools()
+        if (k === 'nocom') load(src, name)
+        else if (k === 'exp') { exFetch(); exShow() }
+        else if (k !== 'snd') start()
+      }
+      if (z) { cfg.fs = Math.min(30, Math.max(11, cfg.fs + +z.dataset.z)); save(); applyFs(); move(); $('[data-fz]', m.el).textContent = cfg.fs + 'px' }
+      if (e.target.closest('[data-x]')) { m.close(); focus() }
+    })
+    $('[data-ch]', m.el)?.addEventListener('change', e => { cfg.chunk = +e.target.value; save(); load(src, name) })
+  }
+
+  let exAI = null, exKey = '', exL = -1
+  const exBox = R('.exl')
+  async function exFetch() {
+    exAI = null
+    if (!cfg.exp || mini || duel || !S.u || !S.cfg.ai?.on || T.split('\n').length > 150) return
+    const k = LANG + ':' + T
+    exKey = k
+    try {
+      const r = await api('lines', { code: T, lang: LANG })
+      if (exKey === k && Array.isArray(r.lines)) { exAI = r.lines; exL = -1; exShow() }
+    } catch (e) {}
+  }
+  function exShow() {
+    if (!exBox) return
+    exBox.hidden = !cfg.exp || mini || duel
+    if (exBox.hidden) return
+    const ln = LN[Math.min(pos, T.length)] || 0
+    if (ln === exL) return
+    exL = ln
+    const L = T.split('\n')[ln] || ''
+    const tx = (exAI && exAI[ln]) || explainLine(L)
+    R('.exn').textContent = ln + 1
+    R('.ext').textContent = tx ? '# ' + tx : ''
+    R('.exs').textContent = exAI && exAI[ln] ? 'ИИ' : ''
+    exBox.classList.toggle('empty', !tx)
+  }
 
   const onR = () => { move(); ghostDraw() }
   addEventListener('resize', onR)
@@ -563,6 +611,78 @@ function Trainer(root, o = {}) {
     get done() { return done },
     destroy() { document.body.classList.remove('kbd-open'); dead = true; clearInterval(tk); cancelAnimationFrame(ghRaf); removeEventListener('resize', onR); offTheme() }
   }
+}
+
+function explainLine(raw) {
+  const L = String(raw || '').trim()
+  if (!L) return ''
+  const cut = (x, n = 28) => { x = String(x).trim(); return x.length > n ? x.slice(0, n - 1) + '…' : x }
+  let m
+  if (L.startsWith('#')) return t('Комментарий, Python его пропускает')
+  if (/^if __name__ == ['"]__main__['"]:/.test(L)) return t('Код ниже запустится, только если файл запущен напрямую')
+  if ((m = L.match(/^from\s+([\w.]+)\s+import\s+(.+)$/))) return t('Берём {0} из модуля {1}', cut(m[2]), m[1])
+  if ((m = L.match(/^import\s+(.+)$/))) return t('Подключаем модуль {0}', cut(m[1]))
+  if ((m = L.match(/^@([\w.]+)/))) return t('Декоратор {0} меняет поведение функции ниже', m[1])
+  if ((m = L.match(/^(async\s+)?def\s+(\w+)\s*\((.*)\)\s*(->.*)?:/))) {
+    const a = m[3].split(',').map(x => x.split(/[:=]/)[0].trim()).filter(x => x && x !== 'self' && x !== 'cls')
+    if (m[2] === '__init__') return a.length ? t('Конструктор: при создании объекта принимает {0}', a.join(', ')) : t('Конструктор, вызывается при создании объекта')
+    return (m[1] ? t('Асинхронная функция {0}', m[2]) : t('Объявляем функцию {0}', m[2])) + (a.length ? ', ' + t('параметры: {0}', cut(a.join(', '))) : ', ' + t('без параметров'))
+  }
+  if ((m = L.match(/^class\s+(\w+)\s*(?:\((.*)\))?:/))) return m[2] ? t('Создаём класс {0}, он наследует {1}', m[1], cut(m[2])) : t('Создаём класс {0}', m[1])
+  if ((m = L.match(/^for\s+(.+?)\s+in\s+range\((.*)\):/))) return t('Цикл: {0} пробегает числа range({1})', m[1], cut(m[2], 20))
+  if ((m = L.match(/^(async\s+)?for\s+(.+?)\s+in\s+(.+):/))) return t('Цикл: перебираем {0}, текущий элемент в {1}', cut(m[3]), m[2])
+  if ((m = L.match(/^while\s+(.+):/))) return m[1].trim() === 'True' ? t('Бесконечный цикл, выйти можно через break') : t('Цикл, пока верно: {0}', cut(m[1]))
+  if ((m = L.match(/^if\s+(.+):/))) return t('Проверяем условие: {0}', cut(m[1], 34))
+  if ((m = L.match(/^elif\s+(.+):/))) return t('Иначе, если {0}', cut(m[1], 34))
+  if (/^else\s*:/.test(L)) return t('Иначе, если условия выше не подошли')
+  if (/^try\s*:/.test(L)) return t('Пробуем выполнить код, ошибки поймает except')
+  if ((m = L.match(/^except\s*(\w[\w.]*)?(?:\s+as\s+(\w+))?/))) return m[1] ? t('Ловим ошибку {0}', m[1]) : t('Ловим любую ошибку')
+  if (/^finally\s*:/.test(L)) return t('Этот блок выполнится в любом случае')
+  if ((m = L.match(/^(async\s+)?with\s+open\((.*)\)\s+as\s+(\w+):/))) return t('Открываем файл в {0}, он закроется сам', m[3])
+  if ((m = L.match(/^(async\s+)?with\s+(.+?)(?:\s+as\s+(\w+))?:/))) return t('Блок with сам закроет {0}', cut(m[2], 22))
+  if ((m = L.match(/^match\s+(.+):/))) return t('Сравниваем {0} с вариантами ниже', cut(m[1]))
+  if ((m = L.match(/^case\s+(.+):/))) return m[1].trim() === '_' ? t('Вариант по умолчанию') : t('Вариант: {0}', cut(m[1]))
+  if ((m = L.match(/^return\s*(.*)$/))) return m[1] ? t('Возвращаем {0}', cut(m[1])) : t('Выходим из функции')
+  if ((m = L.match(/^yield\s+(.*)$/))) return t('Отдаём {0} и ставим функцию на паузу', cut(m[1]))
+  if (L === 'break') return t('Выходим из цикла')
+  if (L === 'continue') return t('Переходим к следующему шагу цикла')
+  if (L === 'pass') return t('Пустой блок, ничего не делаем')
+  if ((m = L.match(/^raise\s+(\w+)/))) return t('Вызываем ошибку {0}', m[1])
+  if ((m = L.match(/^assert\s+(.+)/))) return t('Проверка: если {0} ложно, будет ошибка', cut(m[1]))
+  if ((m = L.match(/^(global|nonlocal)\s+(.+)/))) return t('Будем менять внешнюю переменную {0}', m[2])
+  if ((m = L.match(/^(?:await\s+)?print\((.*)\)$/))) return /^f["']/.test(m[1].trim()) ? t('Выводим строку с подставленными значениями') : m[1].trim() ? t('Выводим на экран {0}', cut(m[1])) : t('Выводим пустую строку')
+  if ((m = L.match(/^([\w.\[\]'"]+)\s*([+\-*/%]|\/\/|\*\*)=\s*(.+)$/))) {
+    const op = { '+': 'Увеличиваем {0} на {1}', '-': 'Уменьшаем {0} на {1}', '*': 'Умножаем {0} на {1}', '/': 'Делим {0} на {1}' }[m[2]]
+    return op ? t(op, m[1], cut(m[3], 20)) : t('Меняем {0} операцией {1}', m[1], m[2] + '=')
+  }
+  if ((m = L.match(/^([\w.]+)\.(append|extend|insert|remove|pop|sort|reverse|clear|update|add|discard)\((.*)\)$/))) {
+    const D = { append: 'Добавляем {1} в конец {0}', extend: 'Дописываем в {0} всё из {1}', insert: 'Вставляем элемент в {0}', remove: 'Удаляем {1} из {0}', pop: 'Достаём элемент из {0}', sort: 'Сортируем {0}', reverse: 'Разворачиваем {0}', clear: 'Очищаем {0}', update: 'Обновляем {0} данными из {1}', add: 'Добавляем {1} в множество {0}', discard: 'Убираем {1} из множества {0}' }
+    return t(D[m[2]], m[1], cut(m[3], 20))
+  }
+  if ((m = L.match(/^self\.(\w+)\s*=\s*(.+)$/))) return t('Сохраняем {0} в объекте', m[1])
+  if ((m = L.match(/^(\w+(?:\s*,\s*\w+)+)\s*=\s*(.+)$/))) return t('Раскладываем значения по переменным {0}', m[1].replace(/\s+/g, ''))
+  if ((m = L.match(/^(\w+)\s*(?::\s*[\w\[\], .|]+)?=\s*(.+)$/))) {
+    const v = m[2].trim()
+    if (/^\[.+\bfor\b.+\bin\b.+\]$/.test(v)) return t('Собираем список {0} через генератор', m[1])
+    if (/^\{.+\bfor\b.+\bin\b.+\}$/.test(v)) return t('Собираем {0} через генератор', m[1])
+    if (/^(await\s+)?input\(/.test(v)) return t('Спрашиваем ввод и кладём ответ в {0}', m[1])
+    if (/^lambda\b/.test(v)) return t('{0} это короткая функция lambda', m[1])
+    if (/^\[\s*\]$/.test(v)) return t('Создаём пустой список {0}', m[1])
+    if (/^\{\s*\}$/.test(v)) return t('Создаём пустой словарь {0}', m[1])
+    if (/^\[/.test(v)) return t('Создаём список {0}', m[1])
+    if (/^\{/.test(v)) return t('Создаём словарь {0}', m[1])
+    if (/^\(/.test(v) && v.includes(',')) return t('Создаём кортеж {0}', m[1])
+    if (/^f?["']/.test(v)) return t('Записываем строку в {0}', m[1])
+    if (/^-?\d/.test(v)) return t('Записываем число {1} в {0}', m[1], cut(v, 14))
+    if (/^(True|False|None)$/.test(v)) return t('{0} получает значение {1}', m[1], v)
+    if ((m[3] = v.match(/^(?:await\s+)?([A-Z]\w*)\(/))) return t('Создаём объект {1} и кладём в {0}', m[1], m[3][1])
+    if ((m[3] = v.match(/^(?:await\s+)?([\w.]+)\(/))) return t('Вызываем {1} и кладём результат в {0}', m[1], m[3][1])
+    return t('Записываем в {0}: {1}', m[1], cut(v, 24))
+  }
+  if ((m = L.match(/^await\s+([\w.]+)\(/))) return t('Ждём, пока выполнится {0}', m[1])
+  if ((m = L.match(/^([\w.]+)\(/))) return t('Вызываем {0}', m[1])
+  if (/^[)\]}]/.test(L)) return t('Закрываем скобку')
+  return ''
 }
 
 async function explain(code) {

@@ -93,7 +93,7 @@ App.page('news', {
 })
 
 async function newsPop() {
-  if (!S.u || location.hash.startsWith('#/news')) return
+  if (!S.u || !['', 'path', 'me'].includes(S.page) || document.activeElement?.matches('textarea,input')) return
   let rows
   try { rows = await newsList() } catch (e) { return }
   if (!rows.length) return

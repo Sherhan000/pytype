@@ -35,7 +35,10 @@ export async function saveCfg(v) {
   await db.q("insert into kv(k,v) values('cfg',$1) on conflict(k) do update set v=excluded.v", [JSON.stringify(cfg)])
 }
 
+export const oauthOn = () => ({ google: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET), github: !!(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) })
+
 export const pubCfg = () => ({
+  oauth: oauthOn(),
   site: cfg.site,
   reg: cfg.reg,
   shop: cfg.shop,

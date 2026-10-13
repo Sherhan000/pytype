@@ -303,32 +303,35 @@ App.page('', {
         <div class="keys3d">${['d', 'e', 'f', '(', ')', ':', 'p', 'r', 'i', 'n', 't', '"', 'h', 'i', '"'].map((k, i) => `<span class="${[1, 6, 12].includes(i) ? 'hot' : ''}">${esc(k)}</span>`).join('')}</div>
       </section>`}
 
-      ${nt ? `<a class="cont mt" href="#/task/${nt.id}" style="--lc:${esc(nt.lg.color)}">
+      <div class="home">
+        <div class="hm">
+      ${nt ? `<a class="cont" href="#/task/${nt.id}" style="--lc:${esc(nt.lg.color)}">
         <div class="lic">${esc(nt.lg.icon)}</div>
         <div style="flex:1;min-width:0"><div class="xs mu" style="font-weight:700">${u ? 'Продолжить путь' : 'Первое задание'}, лига «${esc(nt.lg.name)}»</div><div class="t">${esc(nt.title)}</div></div>
         <span class="btn pri">${I.play}<span class="hide-m">Начать</span></span></a>` : ''}
 
-      ${u?.can_daily ? `<div class="cont mt" style="--lc:var(--y);background:color-mix(in srgb,var(--y) 14%,var(--card));border-color:var(--ys);box-shadow:0 4px 0 var(--ys)">
+      ${u?.can_daily ? `<div class="cont" style="--lc:var(--y);background:color-mix(in srgb,var(--y) 14%,var(--card));border-color:var(--ys);box-shadow:0 4px 0 var(--ys)">
         <div class="lic" style="background:var(--y);border-color:var(--ys)">🎁</div>
         <div style="flex:1"><div class="t">Бонус за вход</div><div class="sm mu">${u.streak ? `Огонь горит ${pl(u.streak, 'день', 'дня', 'дней')}. Не дай ему погаснуть` : 'Заходи каждый день, и награда растёт'}</div></div>
         <button class="btn pri" data-act="daily">Забрать</button></div>` : ''}
 
-      <a class="cont mt" href="#/tourn" data-tn hidden style="--lc:var(--g)"></a>
+      <a class="cont" href="#/tourn" data-tn hidden style="--lc:var(--g)"></a>
 
-      <div class="grid g2 mt" style="align-items:start">
-        <div data-q></div>
-        <div class="tiles" style="grid-template-columns:1fr 1fr">
-          <a class="tile r" href="#/duel"><b>⚔️</b><strong>Дуэль</strong><span><span data-on>${S.online}</span> онлайн</span></a>
-          <a class="tile b" href="#/train"><b>⌨️</b><strong>Тренировка</strong><span>Свой код или наш</span></a>
-          <a class="tile g" href="#/top"><b>🏆</b><strong>Рейтинг</strong><span>Кто быстрее всех</span></a>
-          <a class="tile v" href="#/ai"><b>✨</b><strong>ИИ-наставник</strong><span>Разберёт любой код</span></a>
-          <a class="tile o" href="#/analytics"><b>📊</b><strong>Аналитика</strong><span>Насколько ты быстрее других</span></a>
-          <a class="tile" href="#/news"><b>📰</b><strong>Что нового</strong><span>Последние обновления</span></a>
+          <div class="sec">Что происходит<span class="sp"></span>${u ? `<div class="tabs" data-fs><button data-s="all" class="on">Все</button><button data-s="friends">Друзья</button></div>` : ''}</div>
+          <div class="card" style="padding:4px 18px" data-feed></div>
         </div>
-      </div>
-
-      <div class="sec">Что происходит<span class="sp"></span>${u ? `<div class="tabs" data-fs><button data-s="all" class="on">Все</button><button data-s="friends">Друзья</button></div>` : ''}</div>
-      <div class="card" style="padding:4px 18px" data-feed></div>`
+        <aside class="hs">
+          <div data-q></div>
+          <div class="modes">
+            <a class="tile r" href="#/duel"><b>⚔️</b><strong>Дуэль</strong><span><span data-on>${S.online}</span> онлайн</span></a>
+            <a class="tile b" href="#/train"><b>⌨️</b><strong>Тренировка</strong><span>Свой код или файл</span></a>
+            <a class="tile y" href="#/lessons"><b>🎬</b><strong>Видеоуроки</strong><span>Смотри и повторяй</span></a>
+            <a class="tile g" href="#/top"><b>🏆</b><strong>Рейтинг</strong><span>Кто быстрее всех</span></a>
+            <a class="tile v" href="#/ai"><b>✨</b><strong>ИИ-наставник</strong><span>Разберёт любой код</span></a>
+            <a class="tile o" href="#/analytics"><b>📊</b><strong>Аналитика</strong><span>Ты и все остальные</span></a>
+          </div>
+        </aside>
+      </div>`
     questCard($('[data-q]', v))
     api('tourn').then(r => {
       const el = $('[data-tn]', v)
@@ -428,17 +431,17 @@ App.page('task', {
     const { task: tk, league: lg, done } = await api('tasks/' + (+id || 0))
     setTitle(tk.title)
     v.innerHTML = `
-      <div class="row mb" style="align-items:flex-start;gap:12px">
-        <a class="ib" href="#/path" title="К пути" style="flex:none">${I.prev}</a>
-        <div style="flex:1;min-width:0">
+      <div class="th">
+        <a class="ib" href="#/path" title="К пути">${I.prev}</a>
+        <div class="th-m">
           ${lg ? `<div class="xs mu" style="font-weight:700">${esc(lg.icon)} Лига «${esc(lg.name)}»</div>` : ''}
-          <div class="disp" style="font-size:22px">${esc(tk.title)}</div>
-          <div class="sm mu">${esc(tk.descr)}</div>
+          <h2>${esc(tk.title)}</h2>
+          ${tk.descr ? `<p>${esc(tk.descr)}</p>` : ''}
         </div>
-        <div class="col hide-m" style="align-items:flex-end;gap:6px">${done ? starsH(done.stars) : ''}<span class="tag y">+${tk.coins} 🪙</span></div>
+        <div class="th-r">${done ? starsH(done.stars) : ''}
+          ${tk.kind === 'type' ? `<span class="tag">от ${tk.min_wpm} сл/мин</span><span class="tag">от ${tk.min_acc}%</span>` : `<span class="tag b">${KIND_L[tk.kind] || esc(tk.kind)}</span>`}
+          <span class="tag y">+${tk.coins} 🪙</span></div>
       </div>
-      <div class="row mb sm">${tk.kind === 'type' ? `<span class="tag">нужно от ${tk.min_wpm} слов в мин</span><span class="tag">точность от ${tk.min_acc}%</span>${done ? `<span class="tag ok">лучший ${done.best_wpm} слов в мин</span>` : ''}`
-        : `<span class="tag b">${KIND_L[tk.kind] || esc(tk.kind)}</span><span class="tag">★★★ с первой попытки</span>`}</div>
       <div data-tr></div>
       <div data-ts></div>`
     const box = $('[data-tr]', v)
@@ -457,21 +460,24 @@ App.page('task', {
       box.innerHTML = '<div class="card empty"><b>🧩</b>Этот тип задания скоро появится</div>'
       return
     }
-    box.insertAdjacentHTML('beforebegin', `<div class="row mb ghosts" data-gh><span class="sm mu" style="font-weight:700">${I.ghost.replace('<svg', '<svg style="width:18px;height:18px;vertical-align:-4px"')} Призрак</span>
-      <button class="chip on" data-g="">Выкл</button>${S.u ? '<button class="chip" data-g="me">Мой рекорд</button>' : ''}<button class="chip" data-g="top">Лучший игрок</button></div>`)
     const tr = Trainer(box, { task: true, taskId: tk.id, code: tk.code, name: tk.title, onNext: nextTask, onResult: () => taskStats($('[data-ts]', v), tk) })
-    $('[data-gh]', v).onclick = async e => {
-      const b = e.target.closest('[data-g]')
-      if (!b) return
-      const who = b.dataset.g
+    const GH = [['', 'Призрак'], ...(S.u ? [['me', 'Мой рекорд']] : []), ['top', 'Лучший игрок']]
+    let gi = 0
+    $('.tr-tools .sp', box)?.insertAdjacentHTML('beforebegin', `<button class="tool" data-gc title="Второй курсор едет в темпе рекорда">👻 <span>${esc(t('Призрак'))}</span></button>`)
+    $('[data-gc]', box)?.addEventListener('click', async e => {
+      const b = e.currentTarget, n = (gi + 1) % GH.length, who = GH[n][0]
       try {
         const g = who ? await api('ghost/' + tk.id + '?who=' + who) : null
-        $$('[data-g]', v).forEach(x => x.classList.toggle('on', x === b))
+        gi = n
+        $('span', b).textContent = t(GH[n][1])
+        b.classList.toggle('on', !!who)
         tr.setGhost(g)
         if (g) toast(t('👻 Призрак: {0}, {1} сл/мин. Начни печатать, и он поедет', g.me ? t('мой рекорд') : g.name, g.wpm), 'ok')
         tr.focus()
-      } catch (er) { toast(er.message, 'err') }
-    }
+      } catch (er) {
+        if (who === 'me' && GH[n + 1]) { gi = n; toast(er.message, 'err'); b.click() } else toast(er.message, 'err')
+      }
+    })
     if (!matchMedia('(pointer:coarse)').matches) setTimeout(() => tr.focus(), 100)
     return () => tr.destroy()
   }
@@ -698,14 +704,27 @@ App.page('chat', {
       ta.addEventListener('input', () => { ta.style.height = '48px'; ta.style.height = Math.min(140, ta.scrollHeight) + 'px' })
       fm.onsubmit = e => {
         e.preventDefault()
-        const t = ta.value.trim()
-        if (!t) return
-        const b = $('button', fm); b.disabled = true
-        S.sock.emit('msg', t, r => {
-          b.disabled = false
-          if (r?.e) toast(r.e, 'err')
-          else { ta.value = ''; ta.style.height = '48px' }
+        const tx = ta.value.trim()
+        if (!tx) return
+        const b = $('button', fm)
+        if (b.disabled) return
+        b.disabled = true
+        S.sock.emit('msg', tx, r => {
+          if (r?.e) { toast(t(r.e), 'err'); b.disabled = false; return }
+          ta.value = ''; ta.style.height = '48px'
+          cool(b, r?.wait || 0)
         })
+      }
+      function cool(b, s) {
+        if (!s) { b.disabled = false; return }
+        const ic = b.innerHTML
+        let n = s
+        b.classList.add('cool'); b.innerHTML = `<b>${n}</b>`
+        const iv = setInterval(() => {
+          if (!b.isConnected) return clearInterval(iv)
+          if (--n <= 0) { clearInterval(iv); b.disabled = false; b.classList.remove('cool'); b.innerHTML = ic }
+          else b.innerHTML = `<b>${n}</b>`
+        }, 1000)
       }
     }
     const txt = (t, me) => esc(t).replace(/@([A-Za-z0-9_а-яА-ЯёЁ]{3,20})/g, (m, n) => `<span class="mention">@${n}</span>`)
@@ -772,7 +791,17 @@ App.page('ai', {
         : `<div class="empty"><b>🤖</b>Помогу разобраться с кодом, объясню ошибку и подскажу, как печатать быстрее. Выбери вопрос ниже или напиши свой</div>`
       L.scrollTop = L.scrollHeight
     }
+    let busy = false
+    const lock = on => {
+      busy = on
+      ta.disabled = on; $('button', fm).disabled = on
+      $$('[data-q]', v).forEach(b => b.disabled = on)
+      ta.placeholder = t(on ? 'ИИ печатает ответ…' : 'Спроси про Python или вставь код с ошибкой')
+      if (!on && !matchMedia('(pointer:coarse)').matches) ta.focus()
+    }
     async function send(q, mode) {
+      if (busy) return
+      lock(true)
       if (mode !== 'tips') log.push({ role: 'user', content: q })
       draw()
       L.insertAdjacentHTML('beforeend', '<div class="bub a"><span class="typing"><span></span><span></span><span></span></span></div>')
@@ -782,7 +811,7 @@ App.page('ai', {
         if (mode === 'tips') {
           const p = await api('u/' + encodeURIComponent(S.u.name))
           const ch = Object.entries(p.u.emap || {}).sort((a, b) => b[1] - a[1]).slice(0, 8).map(x => sym(x[0])).join(' ')
-          if (!ch) { log.push({ role: 'assistant', content: t('Пока не вижу твоих ошибок. Пройди пару заданий, и я разберу слабые места.') }); draw(); return }
+          if (!ch) { log.push({ role: 'assistant', content: t('Пока не вижу твоих ошибок. Пройди пару заданий, и я разберу слабые места.') }); draw(); lock(false); return }
           log.push({ role: 'user', content: t('Мои слабые символы') + ': ' + ch })
           r = await api('ai', { mode: 'tips', chars: ch, wpm: S.u.best_wpm, lang: LANG })
         } else r = await api('ai', { mode: 'chat', msgs: log.slice(-12), lang: LANG })
@@ -794,8 +823,9 @@ App.page('ai', {
       log = log.slice(-40)
       ls.s('ai_' + S.u.id, log)
       draw(); left()
+      lock(false)
     }
-    fm.onsubmit = e => { e.preventDefault(); const q = ta.value.trim(); if (!q) return; ta.value = ''; send(q) }
+    fm.onsubmit = e => { e.preventDefault(); const q = ta.value.trim(); if (!q || busy) return; ta.value = ''; send(q) }
     ta.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !matchMedia('(pointer:coarse)').matches) { e.preventDefault(); fm.requestSubmit() } })
     $('[data-chips]', v).onclick = e => { const b = e.target.closest('[data-q]'); if (b) send(b.dataset.q, b.dataset.q === t('Мои слабые символы') ? 'tips' : '') }
     $('[data-clr]', v).onclick = () => { log = []; ls.s('ai_' + S.u.id, log); draw() }
@@ -882,15 +912,27 @@ async function profile(v, name) {
     $('[data-wk]', v).innerHTML = g.length ? g.map(([k, n]) => `<div class="wc" style="--p:${(n / mx).toFixed(2)}"><b>${esc(sym(k))}</b><span>${n}</span></div>`).join('') : '<div class="mu sm">Ошибок пока нет</div>'
     $('[data-ed]', v).onclick = () => {
       const m = modal(`<h2>Профиль</h2><div class="col mt">
+        <label class="f">Ник<input class="in" data-nm maxlength="20" value="${esc(u.name)}" autocapitalize="off"></label>
         <label class="f">О себе<textarea class="in" data-bio maxlength="160">${esc(u.bio)}</textarea></label>
         <button class="btn pri" data-sb>Сохранить</button>
         <div style="height:2px;background:var(--line);margin:10px 0"></div>
         <b>Сменить пароль</b>
-        <input class="in" type="password" data-o placeholder="Старый пароль" autocomplete="current-password">
+        <input class="in" type="password" data-o placeholder="Старый пароль (пусто, если входил через Google или GitHub)" autocomplete="current-password">
         <input class="in" type="password" data-n placeholder="Новый пароль" autocomplete="new-password">
         <button class="btn" data-sp>Сменить пароль</button>
-        <a class="btn" href="#/shop">Сменить аватар, рамку или титул</a></div>`)
-      $('[data-sb]', m.el).onclick = async () => { try { await api('me', { bio: $('[data-bio]', m.el).value }, 'PATCH'); m.close(); toast('Сохранено', 'ok'); route() } catch (e) { toast(e.message, 'err') } }
+        <a class="btn" href="#/shop">Сменить аватар, рамку или титул</a><div class="col" data-lk></div></div>`)
+      $('[data-sb]', m.el).onclick = async () => {
+        try {
+          const r = await api('me', { bio: $('[data-bio]', m.el).value, name: $('[data-nm]', m.el).value.trim() }, 'PATCH')
+          S.u.name = r.name; m.close(); toast('Сохранено', 'ok'); shell(); route()
+        } catch (e) { toast(e.message, 'err') }
+      }
+      api('me/links').then(r => {
+        const box = $('[data-lk]', m.el)
+        if (!box || (!r.on.google && !r.on.github)) return
+        box.innerHTML = `<div style="height:2px;background:var(--line);margin:10px 0"></div><b>Вход через сервисы</b>
+          ${['google', 'github'].filter(k => r.on[k]).map(k => r.have.includes(k) ? `<div class="tag ok" style="align-self:flex-start">✓ ${k === 'google' ? 'Google' : 'GitHub'} ${esc(t('привязан'))}</div>` : `<a class="btn wide ${k === 'google' ? 'oa-g' : 'oa-h'}" href="/auth/${k}">${k === 'google' ? GLOGO : GHLOGO}<span>${esc(t('Привязать {0}', k === 'google' ? 'Google' : 'GitHub'))}</span></a>`).join('')}`
+      }).catch(() => {})
       $('[data-sp]', m.el).onclick = async () => { try { await api('me/pass', { old: $('[data-o]', m.el).value, pass: $('[data-n]', m.el).value }); m.close(); toast('Пароль изменён', 'ok') } catch (e) { toast(e.message, 'err') } }
       m.el.addEventListener('click', e => { if (e.target.closest('a')) m.close() })
     }

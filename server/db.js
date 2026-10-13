@@ -148,6 +148,26 @@ create table if not exists picks(
   q int not null default 0, val text not null, ok boolean not null default false, at timestamptz not null default now(),
   primary key(task_id, user_id, q)
 );
+create table if not exists oauth(
+  provider text not null, pid text not null, user_id int not null references users(id) on delete cascade,
+  at timestamptz not null default now(), primary key(provider, pid)
+);
+create table if not exists media(
+  id serial primary key, name text not null default '', mime text not null, size int not null, data bytea not null,
+  created_at timestamptz not null default now()
+);
+create table if not exists lessons(
+  id serial primary key, title text not null, descr text not null default '', kind text not null default 'yt',
+  src text not null default '', media_id int references media(id) on delete set null, task_id int references tasks(id) on delete set null,
+  ord int not null default 0, active boolean not null default true, created_at timestamptz not null default now()
+);
+create table if not exists lesson_seen(
+  user_id int not null references users(id) on delete cascade, lesson_id int not null references lessons(id) on delete cascade,
+  at timestamptz not null default now(), primary key(user_id, lesson_id)
+);
+create table if not exists lexp(
+  k text primary key, lines jsonb not null, at timestamptz not null default now()
+);
 create table if not exists news(
   id serial primary key, title text not null, body text not null default '', icon text not null default '✨',
   at timestamptz not null default now()

@@ -1,5 +1,5 @@
-const V = 'pytype-v5'
-const SHELL = ['/', '/css/app.css', '/js/i18n.js', '/js/i18n-dict.js', '/js/core.js', '/js/trainer.js', '/js/pages.js', '/js/kinds.js', '/js/stats.js', '/js/tourn.js', '/js/insights.js', '/js/duel.js', '/js/push.js', '/js/admin.js', '/js/ext.js', '/socket.io/socket.io.js', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png']
+const V = 'pytype-v6'
+const SHELL = ['/', '/css/app.css', '/js/i18n.js', '/js/i18n-dict.js', '/js/core.js', '/js/trainer.js', '/js/pages.js', '/js/kinds.js', '/js/stats.js', '/js/tourn.js', '/js/insights.js', '/js/duel.js', '/js/push.js', '/js/admin.js', '/js/lessons.js', '/js/ext.js', '/socket.io/socket.io.js', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png']
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()))
@@ -14,13 +14,15 @@ self.addEventListener('fetch', e => {
   if (r.method !== 'GET') return
   const u = new URL(r.url)
   if (u.origin !== location.origin) return
-  if (u.pathname.startsWith('/api/') || (u.pathname.startsWith('/socket.io/') && !u.pathname.endsWith('.js')) || u.pathname === '/healthz') return
+  if (u.pathname.startsWith('/api/') || (u.pathname.startsWith('/socket.io/') && !u.pathname.endsWith('.js')) || u.pathname === '/healthz' || u.pathname.startsWith('/media/') || u.pathname.startsWith('/auth/')) return
   const key = r.mode === 'navigate' ? '/' : u.pathname
   e.respondWith(caches.open(V).then(async c => {
     const hit = await c.match(key)
-    const net = fetch(r).then(res => { if (res.ok && SHELL.includes(key)) c.put(key, res.clone()); return res }).catch(() => hit)
-    if (hit) { e.waitUntil(net.catch(() => {})); return hit }
-    return net
+    const net = fetch(key === '/' ? '/' : u.pathname + u.search, { cache: 'no-cache', credentials: 'same-origin' }).then(res => { if (res.ok && SHELL.includes(key)) c.put(key, res.clone()); return res })
+    if (!hit) return net
+    e.waitUntil(net.catch(() => {}))
+    const slow = new Promise(ok => setTimeout(() => ok(hit), 3500))
+    return Promise.race([net.catch(() => hit), slow])
   }))
 })
 

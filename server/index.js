@@ -6,6 +6,7 @@ import crypto from 'crypto'
 import { fileURLToPath, pathToFileURL } from 'url'
 import helmet from 'helmet'
 import cookieParser from 'cookie-parser'
+import compression from 'compression'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { Server } from 'socket.io'
@@ -16,6 +17,7 @@ import { ask, quota, left, SYS } from './ai.js'
 import chat from './chat.js'
 import admin from './admin.js'
 import duel from './duel.js'
+import oauth from './oauth.js'
 import { setIo, bump, check, feed, note, questList, claim, feedList, react, ACH, lvl } from './social.js'
 import { initPush, pushKey, remindStreaks } from './push.js'
 import * as tourn from './tourn.js'
@@ -56,7 +58,9 @@ app.use(helmet({
       scriptSrc: ["'self'", "'wasm-unsafe-eval'", "'unsafe-eval'", 'https://cdn.jsdelivr.net'],
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
-      imgSrc: ["'self'", 'data:', 'blob:'],
+      imgSrc: ["'self'", 'data:', 'blob:', 'https://i.ytimg.com', 'https://img.youtube.com', 'https://lh3.googleusercontent.com', 'https://avatars.githubusercontent.com'],
+      frameSrc: ['https://www.youtube-nocookie.com', 'https://www.youtube.com'],
+      mediaSrc: ["'self'", 'blob:', 'https:'],
       connectSrc: ["'self'", 'ws:', 'wss:', 'https://cdn.jsdelivr.net'],
       workerSrc: ["'self'", 'blob:'],
       objectSrc: ["'none'"],
@@ -64,8 +68,10 @@ app.use(helmet({
       upgradeInsecureRequests: PROD ? [] : null
     }
   },
-  crossOriginEmbedderPolicy: false
+  crossOriginEmbedderPolicy: false,
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' }
 }))
+app.use(compression())
 app.use(express.json({ limit: '100kb' }))
 app.use(cookieParser())
 
@@ -104,6 +110,7 @@ function setTok(res, u) {
 }
 
 app.get('/healthz', (req, res) => res.send('ok'))
+oauth(app, { setTok, getUser, admins: ADMINS })
 
 app.get('/api/me', async (req, res) => {
   const unread = req.u ? (await db.one('select count(*)::int n from notes where user_id=$1 and not read', [req.u.id])).n : 0
@@ -153,7 +160,8 @@ app.post('/api/logout', (req, res) => {
 app.post('/api/me/pass', need, async (req, res) => {
   if (!lim('pass' + req.u.id, 6, 600e3)) return res.status(429).json({ e: 'Слишком много попыток, подожди 10 минут' })
   const u = await db.one('select pass from users where id=$1', [req.u.id])
-  if (!(await bcrypt.compare(String(req.body?.old || ''), u.pass))) return res.status(400).json({ e: 'Старый пароль не подходит' })
+  const viaOa = !req.body?.old && await db.one('select 1 from oauth where user_id=$1 limit 1', [req.u.id])
+  if (!viaOa && !(await bcrypt.compare(String(req.body?.old || ''), u.pass))) return res.status(400).json({ e: 'Старый пароль не подходит' })
   const p = String(req.body?.pass || '')
   if (p.length < 6) return res.status(400).json({ e: 'Новый пароль минимум 6 символов' })
   await db.q('update users set pass=$2 where id=$1', [req.u.id, await bcrypt.hash(p, 10)])
@@ -162,8 +170,18 @@ app.post('/api/me/pass', need, async (req, res) => {
 
 app.patch('/api/me', need, async (req, res) => {
   const bio = String(req.body?.bio ?? req.u.bio).slice(0, 160)
-  await db.q('update users set bio=$2 where id=$1', [req.u.id, bio])
-  res.json({ ok: 1 })
+  const name = String(req.body?.name ?? req.u.name).trim()
+  if (name !== req.u.name) {
+    if (!/^[A-Za-z0-9_а-яА-ЯёЁ]{3,20}$/.test(name)) return res.status(400).json({ e: 'Ник: 3-20 символов, буквы, цифры и _' })
+    if (await db.one('select 1 from users where lower(name)=lower($1) and id<>$2', [name, req.u.id])) return res.status(400).json({ e: 'Такой ник уже занят' })
+    if (ADMINS.includes(name.toLowerCase()) && req.u.role !== 'admin') return res.status(400).json({ e: 'Такой ник уже занят' })
+    if (!lim('nm' + req.u.id, 3, 86400e3)) return res.status(429).json({ e: 'Ник можно менять не чаще трёх раз в день' })
+  }
+  try { await db.q('update users set bio=$2, name=$3 where id=$1', [req.u.id, bio, name]) } catch (e) {
+    if (e.code === '23505') return res.status(400).json({ e: 'Такой ник уже занят' })
+    throw e
+  }
+  res.json({ ok: 1, name })
 })
 
 app.post('/api/daily', need, async (req, res) => {
@@ -428,6 +446,34 @@ app.post('/api/tasks/:id/answer', need, async (req, res) => {
   res.json({ ok: true, stars, coins: g.gc, xp: g.gx, cup: g.cup, ach, explain: String(m.explain || ''), qx, dist, extra: t.kind === 'trim' ? m.extra : null, u: pu(await db.one(uSel + ' where id=$1', [req.u.id])) })
 })
 
+const LXN = { ru: 'русском', en: 'английском', uz: 'узбекском (латиница)', tg: 'таджикском' }
+const lxWait = new Map()
+app.post('/api/lines', need, async (req, res) => {
+  const code = String(req.body?.code || '').replace(/\r/g, '').slice(0, 8000), lang = LXN[req.body?.lang] ? req.body.lang : 'ru'
+  const L = code.split('\n')
+  if (!code.trim() || L.length > 150) return res.json({ lines: null })
+  const k = lang + ':' + crypto.createHash('sha1').update(code).digest('hex')
+  const c = await db.one('select lines from lexp where k=$1', [k])
+  if (c) return res.json({ lines: c.lines })
+  if (!cfg.ai?.on || !process.env.GROQ_API_KEY) return res.json({ lines: null })
+  if (!lxWait.has(k)) {
+    if (!lim('lx' + req.u.id, 12, 3600e3)) return res.json({ lines: null })
+    lxWait.set(k, (async () => {
+      const txt = await ask([
+        { role: 'system', content: 'Ты помогаешь новичкам понимать код на Python. Отвечай только JSON.' },
+        { role: 'user', content: `Для каждой строки кода ниже напиши очень короткое пояснение (до 10 слов) на ${LXN[lang]} языке: что делает эта строка, простыми словами, без кавычек и без слова «строка». Для пустых строк и строк из одной закрывающей скобки верни пустую строку. Верни JSON {"lines": [...]} ровно из ${L.length} элементов, по порядку.
+
+${L.map((l, i) => (i + 1) + ': ' + l).join('\n')}` }
+      ], { json: true, max: 2400, temp: 0.2, model: 'llama-3.1-8b-instant' })
+      const j = JSON.parse(txt)
+      const out = Array.isArray(j.lines) ? L.map((_, i) => String(j.lines[i] ?? '').replace(/^#\s*/, '').slice(0, 120)) : null
+      if (out) await db.q('insert into lexp(k,lines) values($1,$2) on conflict(k) do nothing', [k, JSON.stringify(out)])
+      return out
+    })().finally(() => setTimeout(() => lxWait.delete(k), 1000)))
+  }
+  try { res.json({ lines: await lxWait.get(k) }) } catch (e) { res.json({ lines: null }) }
+})
+
 async function pickDist(tid) {
   const rows = await db.q('select q, val, count(*)::int n from picks where task_id=$1 group by 1,2', [tid])
   const out = {}
@@ -502,6 +548,50 @@ async function cache(k, ms, f) {
   CH.set(k, { t: Date.now(), v })
   return v
 }
+
+app.post('/api/admin/media', adm, express.raw({ type: () => true, limit: '60mb' }), async (req, res) => {
+  const buf = req.body
+  if (!Buffer.isBuffer(buf) || !buf.length) return res.status(400).json({ e: 'Пустой файл' })
+  const mime = String(req.headers['content-type'] || '')
+  if (!/^video\/(mp4|webm|ogg|quicktime)$/.test(mime)) return res.status(400).json({ e: 'Подойдёт видео mp4, webm или ogg' })
+  const used = (await db.one('select coalesce(sum(size),0)::bigint n from media')).n
+  if (+used + buf.length > 350e6) return res.status(400).json({ e: 'Место под видео в базе закончилось. Загрузи урок на YouTube и добавь ссылку' })
+  const name = decodeURIComponent(String(req.headers['x-name'] || 'video')).slice(0, 120)
+  const r = await db.one('insert into media(name,mime,size,data) values($1,$2,$3,$4) returning id', [name, mime, buf.length, buf])
+  res.json({ id: r.id, size: buf.length, used: +used + buf.length })
+})
+
+app.get('/media/:id', async (req, res) => {
+  const m = await db.one('select id,mime,size from media where id=$1', [+req.params.id || 0])
+  if (!m) return res.status(404).end()
+  res.set({ 'Accept-Ranges': 'bytes', 'Content-Type': m.mime, 'Cache-Control': 'public, max-age=86400' })
+  let a = 0, b = m.size - 1
+  const rg = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '')
+  if (rg) {
+    if (rg[1] === '' && rg[2]) { a = Math.max(0, m.size - +rg[2]) } else { a = +rg[1] || 0; if (rg[2]) b = Math.min(+rg[2], m.size - 1) }
+    if (a > b || a >= m.size) return res.status(416).set('Content-Range', `bytes */${m.size}`).end()
+    b = Math.min(b, a + 2 * 1024 * 1024 - 1)
+    res.status(206).set('Content-Range', `bytes ${a}-${b}/${m.size}`)
+  }
+  const d = await db.one('select substring(data from $2 for $3) d from media where id=$1', [m.id, a + 1, b - a + 1])
+  res.set('Content-Length', String(b - a + 1)).end(Buffer.from(d.d))
+})
+
+app.get('/api/lessons', async (req, res) => {
+  const rows = await db.q(`select l.id,l.title,l.descr,l.kind,l.src,l.media_id,l.task_id,t.title task_title,
+    (select count(*)::int from lesson_seen s where s.lesson_id=l.id) views
+    from lessons l left join tasks t on t.id=l.task_id where l.active order by l.ord, l.id`)
+  const seen = req.u ? (await db.q('select lesson_id from lesson_seen where user_id=$1', [req.u.id])).map(x => x.lesson_id) : []
+  res.json({ rows, seen })
+})
+
+app.post('/api/lessons/:id/seen', need, async (req, res) => {
+  const l = await db.one('select id from lessons where id=$1 and active', [+req.params.id])
+  if (!l) return res.status(404).json({ e: 'Урок не найден' })
+  const r = await db.one('insert into lesson_seen(user_id,lesson_id) values($1,$2) on conflict do nothing returning lesson_id', [req.u.id, l.id])
+  if (r) await db.q('update users set xp=xp+10 where id=$1', [req.u.id])
+  res.json({ xp: r ? 10 : 0, u: pu(await db.one(uSel + ' where id=$1', [req.u.id])) })
+})
 
 app.get('/api/news', async (req, res) => {
   res.json({ rows: await db.q('select id,title,body,icon,at from news order by id desc limit 30') })
@@ -601,7 +691,8 @@ app.post('/api/shop/equip', need, async (req, res) => {
 
 app.post('/api/ai', need, async (req, res) => {
   if (!cfg.ai.on) return res.status(403).json({ e: 'ИИ выключен админом' })
-  if (!lim('ai' + req.u.id, 8, 60000)) return res.status(429).json({ e: 'Слишком часто, подожди минуту' })
+  if (aiBusy.has(req.u.id)) return res.status(429).json({ e: 'Подожди, ИИ ещё отвечает на прошлый вопрос' })
+  if (!lim('ai' + req.u.id, 6, 60000) || !lim('aih' + req.u.id, 40, 3600e3)) return res.status(429).json({ e: 'Слишком часто, подожди минуту' })
   const q = await quota(req.u)
   if (!q.ok) return res.status(429).json({ e: 'Лимит вопросов на сегодня закончился. Завтра будет новый' })
   const b = req.body || {}
@@ -616,13 +707,17 @@ app.post('/api/ai', need, async (req, res) => {
     for (const m of h) if (['user', 'assistant'].includes(m?.role)) msgs.push({ role: m.role, content: String(m.content || '').slice(0, 4000) })
     if (msgs.length < 2) return res.status(400).json({ e: 'Пустой вопрос' })
   }
+  const last = msgs[msgs.length - 1]?.content || ''
+  if (b.mode === 'chat' && last.replace(/\s+/g, '').length < 2) return res.status(400).json({ e: 'Слишком короткий вопрос' })
+  aiBusy.add(req.u.id)
   try {
     const text = await ask(msgs, { max: 1200 })
     res.json({ text, left: q.left })
   } catch (e) {
     res.status(502).json({ e: e.message })
-  }
+  } finally { aiBusy.delete(req.u.id) }
 })
+const aiBusy = new Set()
 
 app.get('/api/quests', async (req, res) => res.json(await questList(req.u?.id)))
 app.post('/api/quests/claim', need, async (req, res) => {

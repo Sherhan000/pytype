@@ -81,6 +81,8 @@ const I = {
   trophy: sv('<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>'),
   bag: sv('<path d="M5 8h14l-1.2 12.1a1 1 0 0 1-1 .9H7.2a1 1 0 0 1-1-.9zM9 8V6a3 3 0 0 1 6 0v2"/>'),
   chat: sv('<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>'),
+  gear: sv('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>'),
+  film: sv('<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M10 9.5v5l4.5-2.5z"/>'),
   chart: sv('<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'),
   news: sv('<path d="M4 10v4h3l6 4V6L7 10zM17 9a4 4 0 0 1 0 6M19.5 6.5a8 8 0 0 1 0 11"/>'),
   spark: sv('<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>'),
@@ -155,6 +157,7 @@ const App = {
     { r: '', t: 'Главная', i: 'home', m: 1 },
     { r: 'path', t: 'Путь', i: 'path', m: 1 },
     { r: 'train', t: 'Тренировка', i: 'kb' },
+    { r: 'lessons', t: 'Видеоуроки', i: 'film' },
     { r: 'duel', t: 'Дуэли', i: 'swords' },
     { r: 'tourn', t: 'Турнир', i: 'flag' },
     { r: 'top', t: 'Рейтинг', i: 'trophy' },
@@ -177,7 +180,7 @@ function setTitle(s) { s = t(s); const e = $('#top h1'); if (e) e.textContent = 
 
 function shell() {
   const u = S.u, cur = S.page.split('/')[0]
-  const on = r => cur === r || (r === 'path' && (cur === 'task' || cur === 'leagues')) || (r === 'me' && (cur === 'notes' || cur === 'stats'))
+  const on = r => cur === r || (r === 'lessons' && cur === 'lesson') || (r === 'path' && (cur === 'task' || cur === 'leagues')) || (r === 'me' && (cur === 'notes' || cur === 'stats'))
   const vis = App.nav.filter(n => !n.role || n.role.includes(u?.role))
   $('#side').innerHTML = `
     <a href="#/" class="logo"><i>py</i><b>${esc(S.cfg.site || 'pytype')}</b></a>
@@ -252,6 +255,16 @@ function playSheet() {
   m.el.addEventListener('click', e => { if (e.target.closest('a')) m.close() })
 }
 
+const GLOGO = '<svg viewBox="0 0 48 48" width="20" height="20"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34.1 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34.1 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.3-.4-3.5z"/></svg>'
+const GHLOGO = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 .5C5.7.5.5 5.7.5 12c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.5-3.9-1.5-.5-1.3-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.2 1.2a11 11 0 0 1 5.8 0C17.3 4.6 18.3 5 18.3 5c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.2c0 .3.2.7.8.6A11.5 11.5 0 0 0 23.5 12C23.5 5.7 18.3.5 12 .5z"/></svg>'
+function oaBtns() {
+  const o = S.cfg.oauth || {}
+  if (!o.google && !o.github) return ''
+  return `<div class="oa-or"><span>или</span></div><div class="oa">
+    ${o.google ? `<a class="btn wide oa-g" href="/auth/google">${GLOGO}<span>Войти через Google</span></a>` : ''}
+    ${o.github ? `<a class="btn wide oa-h" href="/auth/github">${GHLOGO}<span>Войти через GitHub</span></a>` : ''}</div>`
+}
+
 function authBox(tab = 'login') {
   if (!S.cfg.reg && tab === 'reg') tab = 'login'
   const m = modal(`
@@ -263,7 +276,8 @@ function authBox(tab = 'login') {
       <label class="f">Пароль<input class="in" name="pass" type="password" autocomplete="current-password" maxlength="100" required></label>
       <button class="btn pri lg wide" type="submit" data-ab></button>
       <p class="mu xs" data-ah style="text-align:center"></p>
-    </form>`)
+    </form>
+    ${oaBtns()}`)
   const f = $('[data-af]', m.el)
   const set = t => {
     tab = t
@@ -435,7 +449,7 @@ addEventListener('DOMContentLoaded', async () => {
   if (ls.g('light', false)) { document.body.classList.add('light'); $('meta[name=theme-color]').content = '#eef0fb' }
   document.body.classList.toggle('touch', matchMedia('(pointer:coarse)').matches)
   shell()
-  const t = setTimeout(wake, 2500)
+  const wt = setTimeout(wake, 2500)
   for (let i = 0; ; i++) {
     try { await refresh(); break } catch (e) {
       if (e.code && e.code < 500) break
@@ -443,9 +457,14 @@ addEventListener('DOMContentLoaded', async () => {
       await new Promise(r => setTimeout(r, 3000))
     }
   }
-  clearTimeout(t)
+  clearTimeout(wt)
   unwake()
   sock()
+  const qs = new URLSearchParams(location.search)
+  if (qs.has('auth_err')) toast(t(qs.get('auth_err')), 'err', 6000)
+  if (qs.has('welcome')) setTimeout(() => toast(t('Аккаунт создан, на старт держи 50 монет. Ник можно поменять в профиле'), 'ok', 7000), 600)
+  if (qs.has('linked')) toast(t('Аккаунт {0} привязан, теперь можно входить через него', qs.get('linked') === 'github' ? 'GitHub' : 'Google'), 'ok', 6000)
+  if (location.search) history.replaceState(null, '', '/' + location.hash)
   route()
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {})
