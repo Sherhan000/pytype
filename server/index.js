@@ -464,14 +464,14 @@ app.post('/api/lines', need, async (req, res) => {
         { role: 'user', content: `Для каждой строки кода ниже напиши очень короткое пояснение (до 10 слов) на ${LXN[lang]} языке: что делает эта строка, простыми словами, без кавычек и без слова «строка». Для пустых строк и строк из одной закрывающей скобки верни пустую строку. Верни JSON {"lines": [...]} ровно из ${L.length} элементов, по порядку.
 
 ${L.map((l, i) => (i + 1) + ': ' + l).join('\n')}` }
-      ], { json: true, max: 2400, temp: 0.2, model: 'llama-3.1-8b-instant' })
+      ], { json: true, max: 3000, temp: 0.2 })
       const j = JSON.parse(txt)
       const out = Array.isArray(j.lines) ? L.map((_, i) => String(j.lines[i] ?? '').replace(/^#\s*/, '').slice(0, 120)) : null
       if (out) await db.q('insert into lexp(k,lines) values($1,$2) on conflict(k) do nothing', [k, JSON.stringify(out)])
       return out
     })().finally(() => setTimeout(() => lxWait.delete(k), 1000)))
   }
-  try { res.json({ lines: await lxWait.get(k) }) } catch (e) { res.json({ lines: null }) }
+  try { res.json({ lines: await lxWait.get(k) }) } catch (e) { console.error('lines:', e.message); res.json({ lines: null }) }
 })
 
 async function pickDist(tid) {
