@@ -1,5 +1,5 @@
-const V = 'pytype-v6'
-const SHELL = ['/', '/css/app.css', '/js/i18n.js', '/js/i18n-dict.js', '/js/core.js', '/js/trainer.js', '/js/pages.js', '/js/kinds.js', '/js/stats.js', '/js/tourn.js', '/js/insights.js', '/js/duel.js', '/js/push.js', '/js/admin.js', '/js/lessons.js', '/js/ext.js', '/socket.io/socket.io.js', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png']
+const V = 'pytype-v7'
+const SHELL = ['/', '/css/app.css', '/js/i18n.js', '/js/i18n-dict.js', '/js/core.js', '/js/find.js', '/js/trainer.js', '/js/pages.js', '/js/kinds.js', '/js/stats.js', '/js/tourn.js', '/js/insights.js', '/js/duel.js', '/js/push.js', '/js/admin.js', '/js/lessons.js', '/js/ext.js', '/socket.io/socket.io.js', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png']
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()))

@@ -498,6 +498,24 @@ const NEWS2 = [
   ['Быстрее и чище', 'Редактор стал заметно быстрее на длинном коде, настройки печати собраны в одно окно, а чат защищён от спама.', '⚡']
 ]
 
+const NEWS3 = [
+  ['Головоломки и поиск', 'У головоломок теперь своя страница в меню. Сверху появился поиск: жми Ctrl+K или на лупу и прыгай в любой раздел, задание или урок.', '🔎', '#/puzzles'],
+  ['Магазин, чат и турнир шире', 'В магазине можно примерить вещь перед покупкой, в чате видно, кто сейчас в сети, а в турнире и дуэлях стало больше статистики.', '🛍️', '#/shop']
+]
+
+const NLINK = {
+  'Дуэли, лента и задания дня': '#/duel', 'Турнир недели и призрак': '#/tourn', 'Своё: файлы, режимы и таймер': '#/train',
+  'Новые головоломки': '#/puzzles', 'Аналитика': '#/analytics', 'Видеоуроки': '#/lessons', 'Пояснения к строкам': '#/train',
+  'Вход через Google и GitHub': '#/me', 'Быстрее и чище': '#/train'
+}
+
+const ISSUES = [
+  'Если на сайт давно никто не заходил, первая загрузка идёт около минуты: бесплатный сервер засыпает.',
+  'Вход через Google пока не подключён. Обычный вход и вход через GitHub работают.',
+  'На iPhone уведомления приходят, только если сайт добавлен на экран «Домой».',
+  'Большие видео (больше 60 МБ) загрузить нельзя, такие уроки выкладываем на YouTube.'
+]
+
 const NEWS = [
   ['Дуэли, лента и задания дня', 'Соревнуйся с живыми соперниками, ставь реакции на успехи друзей и забирай сундук за три задания дня.', '⚔️'],
   ['Турнир недели и призрак', 'Один код на всех на целую неделю и призы лучшим. На заданиях можно включить призрака: свой рекорд или лучшего игрока.', '🏁'],
@@ -547,5 +565,11 @@ export async function seed() {
   if (!(await db.one("select 1 from kv where k='news2'"))) {
     for (const x of NEWS2) await db.q('insert into news(title,body,icon) values($1,$2,$3)', x)
     await db.q("insert into kv(k,v) values('news2','true') on conflict do nothing")
+  }
+  if (!(await db.one("select 1 from kv where k='news3'"))) {
+    for (const [k, l] of Object.entries(NLINK)) await db.q("update news set link=$2 where title=$1 and link=''", [k, l])
+    for (const x of NEWS3) await db.q('insert into news(title,body,icon,link) values($1,$2,$3,$4)', x)
+    if (!(await db.one('select 1 from issues limit 1'))) for (const x of ISSUES.slice().reverse()) await db.q('insert into issues(text) values($1)', [x])
+    await db.q("insert into kv(k,v) values('news3','true') on conflict do nothing")
   }
 }

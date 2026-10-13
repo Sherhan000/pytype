@@ -38,7 +38,7 @@ const KHELP = {
 
 const ATABS = [
   ['ov', 'Обзор', ['admin']], ['tasks', 'Задания', ['admin']], ['leagues', 'Лиги', ['admin']], ['items', 'Магазин', ['admin']],
-  ['users', 'Пользователи', ['admin', 'mod']], ['chat', 'Чат', ['admin', 'mod']], ['news', 'Новости', ['admin']], ['set', 'Настройки', ['admin']]
+  ['users', 'Пользователи', ['admin', 'mod']], ['chat', 'Чат', ['admin', 'mod']], ['news', 'Новости', ['admin']], ['issues', 'Ошибки', ['admin']], ['set', 'Настройки', ['admin']]
 ]
 
 App.page('admin', {
@@ -325,16 +325,36 @@ const ADM = {
     b.innerHTML = `<div class="card mb"><h3>Новая запись</h3><p class="sm mu mb">Появится у всех в окне «Что нового» при следующем заходе</p>
       <div class="col"><div class="row" style="flex-wrap:nowrap"><input class="in" data-i value="✨" style="width:64px;text-align:center;flex:none" maxlength="4"><input class="in" data-t placeholder="Заголовок" maxlength="120"></div>
       <textarea class="in" data-b rows="3" placeholder="Что изменилось, коротко и по-человечески" maxlength="1200"></textarea>
+      <label class="f">Куда ведёт кнопка «Открыть»<select class="in" data-l><option value="">никуда</option>${App.nav.filter(n => !n.role).map(n => `<option value="#/${n.r}">${esc(t(n.t))}</option>`).join('')}</select></label>
       <div class="row"><span class="sp"></span><button class="btn pri" data-add>Опубликовать</button></div></div></div>
-      <div class="list">${rows.map(n => `<div class="li"><span style="font-size:24px">${esc(n.icon)}</span><div class="g"><b>${esc(n.title)}</b><span class="mu xs">${esc(n.body)}</span><span class="mu xs">${ago(n.at)}</span></div><button class="btn sm red" data-d="${n.id}">Удалить</button></div>`).join('') || '<div class="empty">Пока пусто</div>'}</div>`
+      <div class="list">${rows.map(n => `<div class="li"><span style="font-size:24px">${esc(n.icon)}</span><div class="g"><b>${esc(n.title)}</b><span class="mu xs">${esc(n.body)}</span><span class="mu xs">${ago(n.at)}${n.link ? ' · ' + esc(n.link) : ''}</span></div><button class="btn sm red" data-d="${n.id}">Удалить</button></div>`).join('') || '<div class="empty">Пока пусто</div>'}</div>`
     $('[data-add]', b).onclick = async () => {
-      const d = { icon: $('[data-i]', b).value.trim() || '✨', title: $('[data-t]', b).value.trim(), body: $('[data-b]', b).value.trim() }
+      const d = { icon: $('[data-i]', b).value.trim() || '✨', title: $('[data-t]', b).value.trim(), body: $('[data-b]', b).value.trim(), link: $('[data-l]', b).value }
       if (!d.title) return toast('Нужен заголовок', 'err')
       try { await api('admin/news', d); toast('Опубликовано', 'ok'); this.news(b) } catch (e) { toast(e.message, 'err') }
     }
     b.querySelector('.list').onclick = async e => {
       const x = e.target.closest('[data-d]')
       if (x && await ask('Удалить запись?', 'Удалить', 'red')) { await api('admin/news/' + x.dataset.d, undefined, 'DELETE'); this.news(b) }
+    }
+  },
+
+  async issues(b) {
+    const { rows } = await api('admin/issues')
+    b.innerHTML = `<div class="card mb"><h3>Известная проблема</h3><p class="sm mu mb">Маленький блок «Известные проблемы» на главной и в «Что нового». Пиши коротко, что не работает и что делать</p>
+      <div class="col"><textarea class="in" data-t rows="2" maxlength="300" placeholder="Например: на iPhone не приходят уведомления"></textarea>
+      <div class="row"><span class="sp"></span><button class="btn pri" data-add>Добавить</button></div></div></div>
+      <div class="list">${rows.map(r => `<div class="li"><span style="font-size:22px">${r.active ? '⚠️' : '✅'}</span><div class="g"><span>${esc(r.text)}</span><span class="mu xs">${ago(r.at)}${r.active ? '' : ' · ' + esc(t('исправлено, скрыто'))}</span></div>
+        <button class="btn sm" data-tg="${r.id}">${r.active ? esc(t('Исправлено')) : esc(t('Вернуть'))}</button><button class="btn sm red" data-d="${r.id}">Удалить</button></div>`).join('') || '<div class="empty">Пока пусто</div>'}</div>`
+    $('[data-add]', b).onclick = async () => {
+      const text = $('[data-t]', b).value.trim()
+      if (!text) return toast('Напиши, в чём проблема', 'err')
+      try { await api('admin/issues', { text, active: true }); toast('Добавлено', 'ok'); this.issues(b) } catch (e) { toast(e.message, 'err') }
+    }
+    b.querySelector('.list').onclick = async e => {
+      const g = e.target.closest('[data-tg]'), x = e.target.closest('[data-d]')
+      if (g) { const r = rows.find(y => y.id === +g.dataset.tg); await api('admin/issues/' + r.id, { active: !r.active }, 'PUT'); this.issues(b) }
+      if (x && await ask('Удалить запись?', 'Удалить', 'red')) { await api('admin/issues/' + x.dataset.d, undefined, 'DELETE'); this.issues(b) }
     }
   },
 

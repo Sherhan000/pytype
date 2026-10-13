@@ -113,6 +113,8 @@ const I = {
   flag: sv('<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>'),
   smile: sv('<circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0M9 9.5h.01M15 9.5h.01"/>'),
   globe: sv('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>'),
+  puzzle: sv('<path d="M10 3h4v3a2 2 0 1 0 4 0V3h3v7h-3a2 2 0 1 0 0 4h3v7h-7v-3a2 2 0 1 0-4 0v3H3v-7h3a2 2 0 1 0 0-4H3V3z"/>'),
+  search: sv('<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>'),
   ghost: sv('<path d="M5 21V10a7 7 0 0 1 14 0v11l-2.5-2-2.3 2-2.2-2-2.2 2-2.3-2zM9.5 10h.01M14.5 10h.01"/>')
 }
 
@@ -156,6 +158,7 @@ const App = {
   nav: [
     { r: '', t: 'Главная', i: 'home', m: 1 },
     { r: 'path', t: 'Путь', i: 'path', m: 1 },
+    { r: 'puzzles', t: 'Головоломки', i: 'puzzle' },
     { r: 'train', t: 'Тренировка', i: 'kb' },
     { r: 'lessons', t: 'Видеоуроки', i: 'film' },
     { r: 'duel', t: 'Дуэли', i: 'swords' },
@@ -193,6 +196,7 @@ function shell() {
   function tab(n) { return `<a class="${on(n.r) ? 'on' : ''}" href="#/${n.r}">${I[n.i]}<span>${n.t}</span>${n.r === 'chat' && S.unread ? '<i class="bd"></i>' : ''}${n.r === 'me' && S.notes ? '<i class="bd"></i>' : ''}${n.r === '' && u?.can_daily ? '<i class="bd y"></i>' : ''}</a>` }
   const t = $('#top h1')?.textContent || ''
   $('#top').innerHTML = `<a href="#/" class="mlogo">py</a><h1>${esc(t)}</h1><span class="sp"></span>
+    <button class="tb-find" data-act="find" title="Поиск (Ctrl+K)">${I.search}<span>Поиск</span><kbd>Ctrl K</kbd></button>
     ${u ? `${u.can_daily ? `<button class="btn sm y tb-daily" data-act="daily">${I.gift}<span class="hide-m">Бонус</span></button>` : ''}
       <a class="pill fire ${u.can_daily ? 'off' : ''}" href="#/me" title="Дней подряд">🔥 ${u.streak || 0}</a>
       <a class="pill coin" href="#/shop" title="Монеты">🪙 ${u.coins}</a>
@@ -338,6 +342,7 @@ async function route() {
   $('#modal').innerHTML = ''
   const v = $('#view')
   v.innerHTML = ''
+  v.classList.toggle('wide', !!p.wide)
   setTitle(p.title || '')
   shell()
   scrollTo(0, 0)
@@ -436,7 +441,7 @@ function langBox() {
   })
 }
 
-const ACT = { auth: () => authBox(), reg: () => authBox('reg'), theme: () => theme(), daily: () => daily(), logout: () => logout(), play: () => playSheet(), lang: () => langBox() }
+const ACT = { auth: () => authBox(), reg: () => authBox('reg'), theme: () => theme(), daily: () => daily(), logout: () => logout(), play: () => playSheet(), lang: () => langBox(), find: () => typeof finder === 'function' && finder() }
 document.addEventListener('click', e => {
   const a = e.target.closest('[data-act]')
   if (a && ACT[a.dataset.act]) { e.preventDefault(); ACT[a.dataset.act](a, e) }
@@ -445,6 +450,13 @@ document.addEventListener('click', e => {
 App.page('404', { title: 'Не найдено', render: v => { v.innerHTML = `<div class="card empty"><b>🧭</b>Такой страницы нет<div class="mt"><a class="btn pri" href="#/">На главную</a></div></div>` } })
 
 addEventListener('hashchange', route)
+addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && e.code === 'KeyK' || e.key === '/' && !e.target.closest?.('input,textarea,select,[contenteditable]')) {
+    if (typeof finder !== 'function' || $('.mbg') && !$('.fd')) return
+    e.preventDefault()
+    finder()
+  }
+})
 addEventListener('DOMContentLoaded', async () => {
   if (ls.g('light', false)) { document.body.classList.add('light'); $('meta[name=theme-color]').content = '#eef0fb' }
   document.body.classList.toggle('touch', matchMedia('(pointer:coarse)').matches)

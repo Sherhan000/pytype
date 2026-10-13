@@ -172,4 +172,8 @@ create table if not exists news(
   id serial primary key, title text not null, body text not null default '', icon text not null default '✨',
   at timestamptz not null default now()
 );
+alter table news add column if not exists link text not null default '';
+create table if not exists issues(
+  id serial primary key, text text not null, active boolean not null default true, at timestamptz not null default now()
+);
 `

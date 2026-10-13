@@ -7,7 +7,8 @@ const T = {
   tasks: { f: ['league_id', 'title', 'descr', 'kind', 'code', 'lvl', 'min_wpm', 'min_acc', 'coins', 'xp', 'ord', 'active', 'meta'], o: 'ord,id' },
   leagues: { f: ['name', 'icon', 'color', 'ord', 'reward'], o: 'ord,id' },
   items: { f: ['kind', 'name', 'value', 'price', 'ord', 'active'], o: 'kind,ord,id' },
-  news: { f: ['title', 'body', 'icon'], o: 'id desc' },
+  news: { f: ['title', 'body', 'icon', 'link'], o: 'id desc' },
+  issues: { f: ['text', 'active'], o: 'id desc' },
   lessons: { f: ['title', 'descr', 'kind', 'src', 'media_id', 'task_id', 'ord', 'active'], o: 'ord,id' }
 }
 
@@ -33,6 +34,7 @@ function pick(b, f) {
     let v = b[k]
     if (['league_id', 'media_id', 'task_id'].includes(k)) v = v === '' || v == null || +v === 0 ? null : +v
     else if (k === 'meta') v = JSON.stringify(typeof v === 'string' ? JSON.parse(v || '{}') : v || {})
+    else if (k === 'link') { v = String(v ?? '').trim().replace(/^\/?#?\/?/, '#/'); if (!/^#\/[\w/-]*$/.test(v)) v = '' }
     else if (k === 'active') v = v === true || v === 'true' || v === 1
     else if (['lvl', 'min_wpm', 'min_acc', 'coins', 'xp', 'ord', 'price', 'reward'].includes(k)) v = Math.round(+v || 0)
     else v = String(v ?? '').slice(0, k === 'code' ? 20000 : 2000)

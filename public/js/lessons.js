@@ -15,20 +15,40 @@ function lessonCard(l, seen) {
 
 App.page('lessons', {
   title: 'Видеоуроки',
+  wide: true,
   async render(v) {
     const { rows, seen } = await api('lessons')
     const S2 = new Set(seen)
     const done = rows.filter(r => S2.has(r.id)).length
-    v.innerHTML = rows.length ? `
+    if (!rows.length) {
+      v.innerHTML = `<div class="card empty"><b>🎬</b>${esc(t('Уроков пока нет. Скоро админ добавит первые'))}${S.u?.role === 'admin' ? `<div class="mt"><a class="btn pri" href="#/admin/lessons">${esc(t('Добавить урок'))}</a></div>` : ''}</div>`
+      return
+    }
+    const nx = rows.find(r => !S2.has(r.id))
+    let f = 'all', q = ''
+    v.innerHTML = `
       <div class="ls-head"><div><h2>Видеоуроки</h2><p class="mu">${esc(t('Смотри урок прямо здесь, потом закрепляй заданием. За каждый новый урок +10 XP'))}</p></div>
         ${S.u ? `<div class="ls-prog"><b>${done} / ${rows.length}</b><span>${esc(t('просмотрено'))}</span><div class="bar g"><i style="width:${done / rows.length * 100}%"></i></div></div>` : ''}</div>
-      <div class="ls-grid">${rows.map(l => lessonCard(l, S2.has(l.id))).join('')}</div>`
-      : `<div class="card empty"><b>🎬</b>${esc(t('Уроков пока нет. Скоро админ добавит первые'))}${S.u?.role === 'admin' ? `<div class="mt"><a class="btn pri" href="#/admin/lessons">${esc(t('Добавить урок'))}</a></div>` : ''}</div>`
+      ${nx && S.u && done ? `<a class="cont mb" href="#/lesson/${nx.id}" style="--lc:var(--y)"><div class="lic">▶️</div><div class="g" style="min-width:0"><div class="xs mu" style="font-weight:700">${esc(t('Следующий урок'))}</div><div class="t" data-notr>${esc(nx.title)}</div></div><span class="btn pri">${I.play}</span></a>` : ''}
+      <div class="row mb ls-bar">
+        ${S.u ? `<div class="tabs" data-f><button data-v="all">Все <span class="xs mu">${rows.length}</span></button><button data-v="new">Новые <span class="xs mu">${rows.length - done}</span></button><button data-v="seen">Просмотренные <span class="xs mu">${done}</span></button></div>` : ''}
+        <span class="sp"></span><label class="ls-q">${I.search}<input class="in" data-q placeholder="Найти урок" autocapitalize="off"></label></div>
+      <div class="ls-grid" data-g></div>`
+    const draw = () => {
+      $$('[data-v]', v).forEach(b => b.classList.toggle('on', b.dataset.v === f))
+      const w = nz(q)
+      const list = rows.filter(l => (f === 'all' || (f === 'seen') === S2.has(l.id)) && (!w || nz(l.title + ' ' + l.descr).includes(w)))
+      $('[data-g]', v).innerHTML = list.map(l => lessonCard(l, S2.has(l.id))).join('') || `<div class="card empty" style="grid-column:1/-1"><b>🔎</b>${esc(t('Ничего не нашлось'))}</div>`
+    }
+    $('[data-f]', v)?.addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (b) { f = b.dataset.v; draw() } })
+    $('[data-q]', v).oninput = e => { q = e.target.value.trim(); draw() }
+    draw()
   }
 })
 
 App.page('lesson', {
   title: 'Урок',
+  wide: true,
   async render(v, id) {
     const { rows, seen } = await api('lessons')
     const l = rows.find(r => r.id === +id)

@@ -80,7 +80,8 @@ App.page('analytics', {
 async function newsList() { return (await api('news')).rows || [] }
 
 function newsHtml(rows) {
-  return rows.map(n => `<div class="nw-i"><span class="ni">${esc(n.icon)}</span><div><b>${esc(t(n.title))}</b><p>${esc(t(n.body))}</p><span class="xs mu">${ago(n.at)}</span></div></div>`).join('')
+  return rows.map(n => `<div class="nw-i"><span class="ni">${esc(n.icon)}</span><div class="g"><b>${esc(t(n.title))}</b><p>${esc(t(n.body))}</p>
+    <div class="nw-f"><span class="xs mu">${ago(n.at)}</span>${n.link ? `<a class="btn sm" href="${esc(n.link)}" data-x>${esc(t('Открыть'))} ${I.next}</a>` : ''}</div></div></div>`).join('')
 }
 
 App.page('news', {
@@ -88,7 +89,8 @@ App.page('news', {
   async render(v) {
     const rows = await newsList()
     if (rows[0]) ls.s('news_seen', rows[0].id)
-    v.innerHTML = rows.length ? `<div class="card nw">${newsHtml(rows)}</div>` : '<div class="card empty"><b>📰</b>Пока ничего нового</div>'
+    v.innerHTML = (rows.length ? `<div class="card nw">${newsHtml(rows)}</div>` : '<div class="card empty"><b>📰</b>Пока ничего нового</div>') + '<div class="mt" data-iss></div>'
+    issuesBox($('[data-iss]', v))
   }
 })
 

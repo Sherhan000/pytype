@@ -1,5 +1,6 @@
 App.page('duel', {
   title: 'Дуэли',
+  wide: true,
   async render(v, arg) {
     if (!S.u) return needAuth(v, 'дуэли')
     if (!S.sock) { v.innerHTML = '<div class="card empty"><b>📡</b>Нет связи с сервером, обнови страницу</div>'; return }
@@ -15,6 +16,17 @@ App.page('duel', {
         <div class="col">
           <div class="card"><h3>Сейчас в сети<span class="sp"></span><button class="btn sm ghost" data-rf>Обновить</button></h3><div class="lb" data-ol><div class="empty" style="padding:14px">Загружаю...</div></div></div>
           <div class="card"><h3>Мои дуэли<span class="sp"></span><span class="sm" style="font-weight:700"><span style="color:var(--g)">${S.u.duel_w || 0}</span> / <span style="color:var(--r)">${S.u.duel_l || 0}</span></span></h3><div data-h></div></div>
+        </div>
+        <div class="col dl-x">
+          ${(() => { const w = S.u.duel_w || 0, l = S.u.duel_l || 0, n = w + l, p = n ? Math.round(w / n * 100) : 0
+            return `<div class="card dl-st"><h3>Моя статистика</h3><div class="dl-n"><div><b style="color:var(--g)">${w}</b><span>${esc(plw(w, 'победа', 'победы', 'побед'))}</span></div><div><b style="color:var(--r)">${l}</b><span>${esc(plw(l, 'поражение', 'поражения', 'поражений'))}</span></div><div><b>${n ? p + '%' : '—'}</b><span>${esc(t('процент побед'))}</span></div></div>
+              <div class="bar g"><i style="width:${p}%"></i></div></div>` })()}
+          <div class="card"><h3>Лучшие дуэлянты<span class="sp"></span><a class="xs mu" href="#/top">${esc(t('весь рейтинг'))}</a></h3><div class="lb" data-tp><div class="empty" style="padding:14px">Загружаю...</div></div></div>
+          <div class="card dl-how"><h3>Как это работает</h3><ol>
+            <li>Обоим игрокам дают один и тот же код</li>
+            <li>Обратный отсчёт три секунды, потом старт</li>
+            <li>Побеждает тот, кто первым допечатает без ошибок</li>
+            <li>На дуэль 5 минут. Кто вышел раньше, тот проиграл</li></ol></div>
         </div></div>`
       const k = $('[data-k]', v)
       if (mode === 'search') {
@@ -50,6 +62,7 @@ App.page('duel', {
       }
       online()
       hist()
+      tops()
       $('[data-rf]', v).onclick = online
     }
 
@@ -68,6 +81,16 @@ App.page('duel', {
         S.duelWait = { id: r.id, who: list.find(x => x.id === +b.dataset.inv) }
         lobby('wait')
       }
+    }
+
+    async function tops() {
+      const box = $('[data-tp]', v)
+      try {
+        const { rows } = await api('top?by=duel')
+        if (!box.isConnected) return
+        box.innerHTML = rows.slice(0, 5).map((r, i) => `<a href="#/u/${encodeURIComponent(r.name)}" class="${r.id === S.u?.id ? 'me' : ''}"><span class="n">${i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}</span>${avatar(r, 34)}<div class="w">${nick(r)}</div><span class="sc">${r.score} <span class="xs mu">${esc(plw(r.score, 'победа', 'победы', 'побед'))}</span></span></a>`).join('')
+          || '<div class="empty" style="padding:14px">Пока никто не побеждал. Будь первым</div>'
+      } catch (e) { box.innerHTML = '' }
     }
 
     async function hist() {

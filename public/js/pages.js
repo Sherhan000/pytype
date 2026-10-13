@@ -325,14 +325,18 @@ App.page('', {
           <div class="modes">
             <a class="tile r" href="#/duel"><b>⚔️</b><strong>Дуэль</strong><span><span data-on>${S.online}</span> онлайн</span></a>
             <a class="tile b" href="#/train"><b>⌨️</b><strong>Тренировка</strong><span>Свой код или файл</span></a>
+            <a class="tile p" href="#/puzzles"><b>🧩</b><strong>Головоломки</strong><span>Что выведет код</span></a>
+            <a class="tile c" href="#/chat"><b>💬</b><strong>Чат</strong><span>Общайся с игроками</span></a>
             <a class="tile y" href="#/lessons"><b>🎬</b><strong>Видеоуроки</strong><span>Смотри и повторяй</span></a>
             <a class="tile g" href="#/top"><b>🏆</b><strong>Рейтинг</strong><span>Кто быстрее всех</span></a>
             <a class="tile v" href="#/ai"><b>✨</b><strong>ИИ-наставник</strong><span>Разберёт любой код</span></a>
             <a class="tile o" href="#/analytics"><b>📊</b><strong>Аналитика</strong><span>Ты и все остальные</span></a>
           </div>
+          <div data-iss></div>
         </aside>
       </div>`
     questCard($('[data-q]', v))
+    issuesBox($('[data-iss]', v))
     api('tourn').then(r => {
       const el = $('[data-tn]', v)
       if (!r.t || !el) return
@@ -425,6 +429,41 @@ App.page('path', {
 })
 App.page('leagues', { title: 'Путь', render: v => App.pages.path.render(v) })
 
+App.page('puzzles', {
+  title: 'Головоломки',
+  wide: true,
+  async render(v) {
+    const { leagues } = await api('leagues')
+    const all = leagues.find(l => l.id === 0)?.tasks || []
+    if (!all.length) { v.innerHTML = '<div class="card empty"><b>🧩</b>Головоломок пока нет. Скоро добавим</div>'; return }
+    const done = all.filter(x => x.done).length, stars = all.reduce((a, x) => a + (x.done?.stars || 0), 0)
+    const kinds = [...new Set(all.map(x => x.kind))]
+    let k = ls.g('pz_k', 'all'), only = ls.g('pz_o', false)
+    if (k !== 'all' && !kinds.includes(k)) k = 'all'
+    v.innerHTML = `<div class="pz-head">
+        <div class="pz-ic">🧩</div>
+        <div class="g"><h2>Головоломки</h2><p class="mu">Короткие задачки на понимание кода: что выведет, где ошибка, что лишнее. Открыты всем, лиги не нужны</p></div>
+        <div class="pz-st"><div><b>${done}<small>/${all.length}</small></b><span>решено</span></div><div><b>${stars}<small>★</small></b><span>звёзд</span></div></div>
+      </div>
+      <div class="bar g mb"><i style="width:${done / all.length * 100}%"></i></div>
+      <div class="row mb pz-bar"><div class="scrollx" style="flex:1;min-width:0"><div class="tabs" data-k style="flex-wrap:nowrap"><button data-v="all">Все <span class="xs mu">${all.length}</span></button>${kinds.map(x => `<button data-v="${x}">${esc(KIND_L[x] || x)} <span class="xs mu">${all.filter(y => y.kind === x).length}</span></button>`).join('')}</div></div>
+        <label class="sw-l"><input type="checkbox" data-o ${only ? 'checked' : ''}><span>Только нерешённые</span></label></div>
+      <div class="pz-grid" data-g></div>`
+    const draw = () => {
+      $$('[data-v]', v).forEach(b => b.classList.toggle('on', b.dataset.v === k))
+      const list = all.filter(x => (k === 'all' || x.kind === k) && (!only || !x.done))
+      $('[data-g]', v).innerHTML = list.map(x => `<a class="pz ${x.done ? 'ok' : ''}" href="#/task/${x.id}">
+        <div class="pz-t"><span class="tag b">${esc(KIND_L[x.kind] || x.kind)}</span><span class="sp"></span>${x.done ? starsH(x.done.stars) : `<span class="tag y">+${x.coins} 🪙</span>`}</div>
+        <b>${esc(x.title)}</b>${x.descr ? `<p>${esc(x.descr)}</p>` : ''}
+        <span class="pz-go">${x.done ? esc(t('Решить ещё раз')) : esc(t('Решить'))} ${I.next}</span></a>`).join('')
+        || `<div class="card empty" style="grid-column:1/-1"><b>🎉</b>${esc(t('Тут всё решено. Загляни в другие типы'))}</div>`
+    }
+    $('[data-k]', v).onclick = e => { const b = e.target.closest('[data-v]'); if (b) { k = b.dataset.v; ls.s('pz_k', k); draw() } }
+    $('[data-o]', v).onchange = e => { only = e.target.checked; ls.s('pz_o', only); draw() }
+    draw()
+  }
+})
+
 App.page('task', {
   title: 'Задание',
   async render(v, id) {
@@ -432,7 +471,7 @@ App.page('task', {
     setTitle(tk.title)
     v.innerHTML = `
       <div class="th">
-        <a class="ib" href="#/path" title="К пути">${I.prev}</a>
+        <a class="ib" href="${lg ? '#/path' : '#/puzzles'}" title="${lg ? 'К пути' : 'К головоломкам'}">${I.prev}</a>
         <div class="th-m">
           ${lg ? `<div class="xs mu" style="font-weight:700">${esc(lg.icon)} Лига «${esc(lg.name)}»</div>` : ''}
           <h2>${esc(tk.title)}</h2>
@@ -621,59 +660,96 @@ const SLOTV = { avatar: 'avatar', frame: 'frame', title: 'title', theme: 'theme'
 
 App.page('shop', {
   title: 'Магазин',
+  wide: true,
   async render(v) {
-    let k = 'avatar'
+    let k = ls.g('shop_k', 'avatar'), f = 'all', so = 'ord', tr = null
+    if (!KINDS[k]) k = 'avatar'
     const d = await api('shop')
-    v.innerHTML = `${S.u ? `<div class="cont mb" style="--lc:var(--y)"><div class="lic">🪙</div><div style="flex:1"><div class="t" data-c>${S.u.coins} монет</div><div class="sm mu">Монеты дают за задания, звёзды, кубки, дуэли и задания дня</div></div></div>` : ''}
-      <div class="scrollx mb"><div class="tabs" data-k style="flex-wrap:nowrap">${Object.entries(KINDS).map(([a, b]) => `<button data-kk="${a}">${b}</button>`).join('')}</div></div>
-      ${S.cfg.shop === false ? '<div class="card mb">🔒 Магазин временно закрыт</div>' : ''}
-      <div class="shop" data-g></div>`
+    const own = it => it.price === 0 || d.own.includes(it.id)
+    v.innerHTML = `<div class="shop-w">
+      <div class="shop-m">
+        <div class="scrollx mb"><div class="tabs" data-k style="flex-wrap:nowrap">${Object.entries(KINDS).map(([a, b]) => `<button data-kk="${a}">${b} <span class="xs mu" data-kn="${a}"></span></button>`).join('')}</div></div>
+        <div class="row mb shop-f"><div class="tabs" data-f><button data-ff="all">Все</button>${S.u ? '<button data-ff="own">Мои</button><button data-ff="can">По карману</button>' : ''}</div><span class="sp"></span>
+          <select class="in" data-so><option value="ord">По порядку</option><option value="lo">Сначала дешёвые</option><option value="hi">Сначала дорогие</option></select></div>
+        ${S.cfg.shop === false ? '<div class="card mb">🔒 Магазин временно закрыт</div>' : ''}
+        <div class="shop" data-g></div>
+      </div>
+      <aside class="shop-a"><div class="card fit" data-pv></div></aside></div>`
     const pv = it => {
       if (it.kind === 'avatar') return `<span class="av" style="--s:64px">${esc(it.value)}</span>`
       if (it.kind === 'frame') return `<span class="av fr-${esc(it.value)}" style="--s:58px">${esc(S.u?.avatar || '🐍')}</span>`
       if (it.kind === 'title') return `<span class="ttl" style="font-size:14px;padding:6px 12px">${esc(it.value)}</span>`
-      if (it.kind === 'theme') return `<div class="ed th-${esc(it.value)} themepv" style="box-shadow:none"><span class="t-k">def</span> <span class="t-fn">go</span>():<br>&nbsp;&nbsp;<span class="t-k">return</span> <span class="t-s">"ok"</span><span style="display:inline-block;width:2px;height:12px;background:var(--cur);vertical-align:-2px"></span></div>`
+      if (it.kind === 'theme') return themePv(it.value)
       if (it.kind === 'color') return `<span class="disp" style="font-size:20px">${nick({ name: S.u?.name || 'Ник', ncolor: it.value })}</span>`
       return ''
     }
+    function themePv(x) { return `<div class="ed th-${esc(x || '')} themepv" style="box-shadow:none"><span class="t-k">def</span> <span class="t-fn">go</span>():<br>&nbsp;&nbsp;<span class="t-k">return</span> <span class="t-s">"ok"</span><span style="display:inline-block;width:2px;height:12px;background:var(--cur);vertical-align:-2px"></span></div>` }
+    function btn(it) {
+      const on = (S.u?.[SLOTV[it.kind]] ?? '') === it.value
+      return !S.u ? '<button class="btn sm" data-act="auth">Войти</button>'
+        : on ? '<button class="btn sm g" disabled>Надето</button>'
+        : own(it) ? `<button class="btn sm" data-eq="${it.id}">Надеть</button>`
+        : `<button class="btn sm pri" data-buy="${it.id}" ${S.u.coins < it.price ? 'disabled title="Не хватает монет"' : ''}>Купить</button>`
+    }
+    function fit() {
+      const u = S.u || { name: t('Ник'), avatar: '🐍' }, lk = { ...u }
+      if (tr) lk[SLOTV[tr.kind]] = tr.value
+      const need = tr && S.u && !own(tr) ? tr.price - S.u.coins : 0
+      $('[data-pv]', v).innerHTML = `<h3>Примерочная</h3><p class="xs mu mb">Нажми на любую вещь, чтобы примерить её до покупки</p>
+        <div class="fit-u">${avatar(lk, 76)}<div class="g">${nick(lk)}${lk.title ? `<span class="ttl">${esc(lk.title)}</span>` : ''}<div class="xs mu">${esc(t('Уровень {0}', lvl(u.xp)))}</div></div></div>
+        ${themePv(lk.theme)}
+        ${tr ? `<div class="fit-it"><div class="g"><b>${esc(tr.name)}</b><span class="xs mu">${esc(t(KINDS[tr.kind]))} · ${tr.price ? tr.price + ' 🪙' : esc(t('бесплатно'))}</span></div>${btn(tr)}</div>
+          ${need > 0 ? `<div class="xs mu">${esc(t('Не хватает {0} 🪙. Пройди пару заданий или дуэль', need))}</div>` : ''}
+          <button class="btn sm ghost wide" data-rs>Снять примерку</button>` : ''}
+        ${S.u ? `<div class="fit-c"><span>🪙 <b data-c>${S.u.coins}</b></span><span class="xs mu">${esc(t('Куплено {0} из {1}', d.own.length, d.items.filter(i => i.price).length))}</span></div>
+          <p class="xs mu">Монеты дают за задания, звёзды, кубки, дуэли и задания дня</p>` : ''}`
+    }
     function draw() {
       $$('[data-kk]', v).forEach(b => b.classList.toggle('on', b.dataset.kk === k))
+      $$('[data-ff]', v).forEach(b => b.classList.toggle('on', b.dataset.ff === f))
+      for (const x in KINDS) { const a = d.items.filter(i => i.kind === x), e = $(`[data-kn="${x}"]`, v); if (e) e.textContent = S.u ? a.filter(own).length + '/' + a.length : a.length }
       const eq = S.u?.[SLOTV[k]] ?? ''
-      const items = d.items.filter(i => i.kind === k)
-      $('[data-g]', v).innerHTML = (k !== 'avatar' ? `<div class="item ${!eq ? 'eq' : ''}"><div class="pv"><span class="mu sm">Ничего</span></div><div class="nm">Без украшения</div><div class="pr mu">бесплатно</div>
+      let items = d.items.filter(i => i.kind === k)
+      if (f === 'own') items = items.filter(own)
+      if (f === 'can') items = items.filter(i => !own(i) && i.price <= S.u.coins)
+      if (so !== 'ord') items = items.slice().sort((a, b) => so === 'lo' ? a.price - b.price : b.price - a.price)
+      $('[data-g]', v).innerHTML = (k !== 'avatar' && f !== 'can' ? `<div class="item ${!eq ? 'eq' : ''}"><div class="pv"><span class="mu sm">Ничего</span></div><div class="nm">Без украшения</div><div class="pr mu">бесплатно</div>
         ${S.u ? (!eq ? '<button class="btn sm" disabled>Надето</button>' : '<button class="btn sm" data-eq="0">Снять</button>') : ''}</div>` : '') +
-        items.map(it => {
-          const own = it.price === 0 || d.own.includes(it.id), on = eq === it.value
-          return `<div class="item ${on ? 'eq' : ''}"><div class="pv">${pv(it)}</div><div class="nm">${esc(it.name)}</div>
-            <div class="pr">${it.price ? it.price + ' 🪙' : 'бесплатно'}</div>
-            ${!S.u ? '<button class="btn sm" data-act="auth">Войти</button>'
-              : on ? '<button class="btn sm g" disabled>Надето</button>'
-              : own ? `<button class="btn sm" data-eq="${it.id}">Надеть</button>`
-              : `<button class="btn sm pri" data-buy="${it.id}" ${S.u.coins < it.price ? 'disabled title="Не хватает монет"' : ''}>Купить</button>`}</div>`
-        }).join('')
+        items.map(it => `<div class="item ${eq === it.value ? 'eq' : ''} ${tr?.id === it.id ? 'try' : ''}" data-try="${it.id}"><div class="pv">${pv(it)}</div><div class="nm">${esc(it.name)}</div>
+          <div class="pr">${own(it) && it.price ? '<span class="mu xs">' + esc(t('куплено')) + '</span>' : it.price ? it.price + ' 🪙' : 'бесплатно'}</div>${btn(it)}</div>`).join('')
+        + (items.length ? '' : `<div class="card empty" style="grid-column:1/-1"><b>🛍️</b>${esc(f === 'can' ? t('Пока не на что хватает. Копи монеты') : t('Тут пусто'))}</div>`)
+      fit()
     }
-    $('[data-k]', v).onclick = e => { const b = e.target.closest('[data-kk]'); if (b) { k = b.dataset.kk; draw() } }
-    $('[data-g]', v).onclick = async e => {
+    $('[data-k]', v).onclick = e => { const b = e.target.closest('[data-kk]'); if (b) { k = b.dataset.kk; ls.s('shop_k', k); draw() } }
+    $('[data-f]', v).onclick = e => { const b = e.target.closest('[data-ff]'); if (b) { f = b.dataset.ff; draw() } }
+    $('[data-so]', v).onchange = e => { so = e.target.value; draw() }
+    $('.shop-w', v).onclick = async e => {
+      if (e.target.closest('[data-rs]')) { tr = null; return draw() }
       const b = e.target.closest('[data-buy],[data-eq]')
-      if (!b) return
+      if (!b) {
+        const c = e.target.closest('[data-try]')
+        if (c) { tr = d.items.find(i => i.id === +c.dataset.try); draw(); if (innerWidth < 960) $('[data-pv]', v).scrollIntoView({ behavior: 'smooth', block: 'nearest' }) }
+        return
+      }
       b.disabled = true
       try {
         if (b.dataset.buy) {
           const it = d.items.find(i => i.id === +b.dataset.buy)
-          if (!(await ask(`Купить «${it.name}» за ${it.price} 🪙?`, 'Купить'))) { b.disabled = false; return }
+          if (!(await ask(t('Купить «{0}» за {1} 🪙?', it.name, it.price), t('Купить')))) { b.disabled = false; return }
           const r = await api('shop/buy', { id: it.id })
           S.u.coins = r.coins
           d.own.push(it.id)
-          const q = await api('shop/equip', { kind: k, id: it.id })
+          const q = await api('shop/equip', { kind: it.kind, id: it.id })
           setUser(q.u)
-          toast('Куплено и надето: ' + it.name, 'ok')
+          toast(t('Куплено и надето: {0}', it.name), 'ok')
           confetti(60)
         } else {
-          const q = await api('shop/equip', { kind: k, id: +b.dataset.eq })
+          const it = d.items.find(i => i.id === +b.dataset.eq)
+          const q = await api('shop/equip', { kind: it?.kind || k, id: +b.dataset.eq })
           setUser(q.u)
         }
+        tr = null
         App.emit('user')
-        const c = $('[data-c]', v); if (c) c.textContent = S.u.coins + ' монет'
         draw()
       } catch (er) { toast(er.message, 'err'); b.disabled = false }
     }
@@ -681,14 +757,29 @@ App.page('shop', {
   }
 })
 
+const CEMO = ['👍', '😂', '🔥', '❤️', '🎉', '😮', '🤔', '😢', '🐍', '⚡', '🏆', '👀', '🙏', '💪', '😎', '🤝']
+
 App.page('chat', {
   title: 'Общий чат',
+  wide: true,
   render(v) {
     const can = () => S.chatCan !== false
-    v.innerHTML = `<div class="chat">
+    const c0 = S.cfg.chat || {}
+    v.innerHTML = `<div class="chat-w"><div class="chat">
       <div class="chat-h"><span class="dot"></span><b data-on>${S.online}</b><span class="mu sm">в сети</span><span class="sp" style="flex:1"></span><span class="mu xs" data-rules style="text-align:right"></span></div>
       <div class="msgs" data-m></div>
-      <div data-f></div></div>`
+      <div data-f></div></div>
+      <aside class="chat-a">
+        <div class="card"><h3>Сейчас в сети<span class="sp"></span><button class="ib sm" data-rf title="Обновить">${I.redo}</button></h3><div class="ca-on" data-ol><div class="xs mu">Загружаю...</div></div></div>
+        <div class="card ca-r"><h3>Правила</h3><ul>
+          <li>Без мата, оскорблений и рекламы</li>
+          <li>Одинаковые и почти одинаковые сообщения подряд не пройдут</li>
+          ${c0.slow ? `<li>${esc(t('Не чаще одного сообщения в {0} с', c0.slow))}</li>` : ''}
+          <li>За спам чат сам выдаёт мут: 1, 5, 30 минут и дальше</li>
+          ${S.cfg.ai?.on && S.cfg.ai?.chat ? '<li>Чтобы спросить ИИ прямо в чате, начни сообщение с /ai</li>' : ''}
+        </ul></div>
+        <div class="card ca-q"><a class="btn wide" href="#/duel">${I.swords} Найти соперника</a><a class="btn wide" href="#/ai">${I.spark} Спросить ИИ лично</a></div>
+      </aside></div>`
     const box = $('[data-m]', v)
     const isMod = () => ['admin', 'mod'].includes(S.u?.role)
     const rules = () => {
@@ -698,16 +789,20 @@ App.page('chat', {
     const foot = () => {
       const f = $('[data-f]', v)
       if (!S.u) { f.innerHTML = `<div class="chat-f" style="justify-content:center;align-items:center"><span class="mu sm">Войди, чтобы писать</span><button class="btn sm pri" data-act="auth">Войти</button></div>`; return }
-      f.innerHTML = `<form class="chat-f"><textarea class="in" maxlength="${S.cfg.chat?.len || 300}" placeholder="Сообщение" data-t rows="1"></textarea><button class="btn b" title="Отправить">${I.send}</button></form>`
-      const fm = $('form', f), ta = $('[data-t]', f)
+      f.innerHTML = `<div class="emo" data-emo hidden>${CEMO.map(x => `<button type="button" data-e="${x}">${x}</button>`).join('')}</div>
+        <form class="chat-f"><button type="button" class="ib" data-eb title="Смайлики">${I.smile}</button><textarea class="in" maxlength="${S.cfg.chat?.len || 300}" placeholder="Сообщение" data-t rows="1"></textarea><button class="btn b" title="Отправить">${I.send}</button></form>`
+      const fm = $('form', f), ta = $('[data-t]', f), em = $('[data-emo]', f)
+      $('[data-eb]', f).onclick = () => { em.hidden = !em.hidden }
+      em.onclick = e => { const b = e.target.closest('[data-e]'); if (b) { ta.setRangeText(b.dataset.e, ta.selectionStart, ta.selectionEnd, 'end'); ta.focus() } }
       ta.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !matchMedia('(pointer:coarse)').matches) { e.preventDefault(); fm.requestSubmit() } })
       ta.addEventListener('input', () => { ta.style.height = '48px'; ta.style.height = Math.min(140, ta.scrollHeight) + 'px' })
       fm.onsubmit = e => {
         e.preventDefault()
         const tx = ta.value.trim()
         if (!tx) return
-        const b = $('button', fm)
+        const b = $('button.b', fm)
         if (b.disabled) return
+        em.hidden = true
         b.disabled = true
         S.sock.emit('msg', tx, r => {
           if (r?.e) { toast(t(r.e), 'err'); b.disabled = false; return }
@@ -753,9 +848,33 @@ App.page('chat', {
         m.el.onclick = ev => { const b = ev.target.closest('[data-mm]'); if (b) { S.sock.emit('mute', { uid: +mu.dataset.mute, min: +b.dataset.mm }, r => r?.e ? toast(r.e, 'err') : toast('Готово', 'ok')); m.close() } }
       }
     }
-    rules(); foot(); all()
+    let olT = 0, olAt = 0
+    async function ol() {
+      const el = $('[data-ol]', v)
+      if (!el || !S.sock || getComputedStyle($('.chat-a', v)).display === 'none') return
+      olAt = Date.now()
+      const list = await new Promise(r => S.sock.emit('duel:online', null, x => r(Array.isArray(x) ? x : [])))
+      if (!el.isConnected) return
+      el.innerHTML = (S.u ? `<div class="ca-u me">${avatar(S.u, 32, 1)}<span class="g">${nick(S.u)} <span class="xs mu">${esc(t('это ты'))}</span></span></div>` : '') +
+        list.slice(0, 30).map(u => `<div class="ca-u">${avatar(u, 32, 1)}<a class="g" href="#/u/${encodeURIComponent(u.name)}">${nick(u)}</a>
+          ${S.u ? `<button class="ib" data-at="${esc(u.name)}" title="Упомянуть">@</button><button class="ib" data-du="${u.id}" title="Вызвать на дуэль">${I.swords}</button>` : ''}</div>`).join('')
+        + (list.length ? '' : `<div class="xs mu">${esc(t('Кроме тебя никого. Позови друзей'))}</div>`)
+    }
+    $('.chat-a', v).onclick = async e => {
+      if (e.target.closest('[data-rf]')) return ol()
+      const a = e.target.closest('[data-at]'), du = e.target.closest('[data-du]')
+      if (a) { const ta = $('[data-t]', v); if (ta) { ta.value = '@' + a.dataset.at + ' ' + ta.value; ta.focus() } }
+      if (du) {
+        const r = await new Promise(x => S.sock.emit('duel:invite', { uid: +du.dataset.du }, y => x(y || {})))
+        if (r.e) return toast(r.e, 'err')
+        S.duelWait = { id: r.id, who: { name: $('.nm', du.parentElement)?.textContent || '' } }
+        location.hash = '#/duel'
+      }
+    }
+    rules(); foot(); all(); ol()
     const off = App.on('chat', d => {
       $('[data-on]', v).textContent = S.online
+      if (d.t === 'online') { clearTimeout(olT); olT = setTimeout(ol, Math.max(0, 8000 - (Date.now() - olAt))) }
       if (d.t === 'hist' || d.t === 'hello' || d.t === 'del') return all()
       if (d.t === 'msg') {
         box.querySelector('.empty')?.remove()
@@ -766,7 +885,7 @@ App.page('chat', {
     })
     const off2 = App.on('cfg', () => { rules(); foot() })
     const off3 = App.on('user', () => foot())
-    return () => { off(); off2(); off3() }
+    return () => { off(); off2(); off3(); clearTimeout(olT) }
   }
 })
 

@@ -594,7 +594,11 @@ app.post('/api/lessons/:id/seen', need, async (req, res) => {
 })
 
 app.get('/api/news', async (req, res) => {
-  res.json({ rows: await db.q('select id,title,body,icon,at from news order by id desc limit 30') })
+  res.json({ rows: await db.q('select id,title,body,icon,link,at from news order by id desc limit 30') })
+})
+
+app.get('/api/issues', async (req, res) => {
+  res.json({ rows: await db.q('select id,text,at from issues where active order by id desc limit 12') })
 })
 
 app.get('/api/ghost/:id', async (req, res) => {
@@ -619,7 +623,7 @@ app.get('/api/top', async (req, res) => {
     if (!req.u) return res.json({ rows: [] })
     rows = await db.q(`select * from (${base} from users u where u.id=$1 or u.id in (select followee from follows where follower=$1)) x order by xp desc limit 100`, [req.u.id])
   } else if (by === 'duel') {
-    rows = await db.q(`select * from (${base}, u.duel_w score from users u where not u.banned and u.duel_w > 0) x order by duel_w desc, xp desc limit 50`)
+    rows = await db.q(`select * from (${base}, u.duel_w score from users u where not u.banned and u.duel_w > 0) x order by score desc, xp desc limit 50`)
   } else if (by === 'week') {
     rows = await db.q(`${base}, w.s::int score from users u join (select user_id, sum(xp) s from results where created_at > now() - interval '7 days' group by user_id) w on w.user_id=u.id where not u.banned order by w.s desc limit 50`)
   } else {
