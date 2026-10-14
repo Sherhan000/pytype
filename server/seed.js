@@ -503,6 +503,13 @@ const NEWS3 = [
   ['Магазин, чат и турнир шире', 'В магазине можно примерить вещь перед покупкой, в чате видно, кто сейчас в сети, а в турнире и дуэлях стало больше статистики.', '🛍️', '#/shop']
 ]
 
+const NEWS4 = [
+  ['Теперь мы Indentra', 'У сайта новое имя. Indentra от слова indent, отступ: в Python без правильных отступов код не работает. Аккаунты, монеты и прогресс на месте.', '✨', ''],
+  ['Группы', 'Собери друзей, класс или команду в свою группу. Внутри общий рейтинг недели, чат и лента успехов. Позвать можно одной ссылкой.', '👥', '#/groups'],
+  ['Заморозка огня', 'В магазине появилась заморозка: если пропустишь один день, серия не сгорит. Можно держать две штуки.', '🧊', '#/shop'],
+  ['Работа над ошибками', 'В тренировке есть кнопка «Мои ошибки»: собирает строки с символами, на которых ты чаще всего ошибаешься.', '🎯', '#/train']
+]
+
 const NLINK = {
   'Дуэли, лента и задания дня': '#/duel', 'Турнир недели и призрак': '#/tourn', 'Своё: файлы, режимы и таймер': '#/train',
   'Новые головоломки': '#/puzzles', 'Аналитика': '#/analytics', 'Видеоуроки': '#/lessons', 'Пояснения к строкам': '#/train',
@@ -571,5 +578,9 @@ export async function seed() {
     for (const x of NEWS3) await db.q('insert into news(title,body,icon,link) values($1,$2,$3,$4)', x)
     if (!(await db.one('select 1 from issues limit 1'))) for (const x of ISSUES.slice().reverse()) await db.q('insert into issues(text) values($1)', [x])
     await db.q("insert into kv(k,v) values('news3','true') on conflict do nothing")
+  }
+  if (!(await db.one("select 1 from kv where k='news4'"))) {
+    for (const x of NEWS4) await db.q('insert into news(title,body,icon,link) values($1,$2,$3,$4)', x)
+    await db.q("insert into kv(k,v) values('news4','true') on conflict do nothing")
   }
 }

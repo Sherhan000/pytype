@@ -9,6 +9,7 @@ const T = {
   items: { f: ['kind', 'name', 'value', 'price', 'ord', 'active'], o: 'kind,ord,id' },
   news: { f: ['title', 'body', 'icon', 'link'], o: 'id desc' },
   issues: { f: ['text', 'active'], o: 'id desc' },
+  grps: { f: ['name', 'icon', 'descr', 'open'], o: 'id desc' },
   lessons: { f: ['title', 'descr', 'kind', 'src', 'media_id', 'task_id', 'ord', 'active'], o: 'ord,id' }
 }
 

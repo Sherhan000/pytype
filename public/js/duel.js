@@ -58,7 +58,7 @@ App.page('duel', {
         }
         if (e.target.closest('[data-cancel]')) { S.sock.emit('duel:cancel'); S.duelWait = null; room = null; lobby() }
         if (e.target.closest('[data-copy]')) { const i = $('[data-url]', v); i.select(); navigator.clipboard?.writeText(i.value).then(() => toast('Ссылка скопирована', 'ok')).catch(() => document.execCommand('copy')) }
-        if (e.target.closest('[data-share]')) navigator.share({ title: 'Дуэль на pytype', text: 'Давай наперегонки печатать код', url: $('[data-url]', v).value }).catch(() => {})
+        if (e.target.closest('[data-share]')) navigator.share({ title: 'Дуэль на Indentra', text: 'Давай наперегонки печатать код', url: $('[data-url]', v).value }).catch(() => {})
       }
       online()
       hist()

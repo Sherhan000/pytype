@@ -29,7 +29,7 @@ const P = {
         body: JSON.stringify({ code, client_id: this.id(), client_secret: this.sec(), redirect_uri: cb })
       }).then(r => r.json())
       if (!r.access_token) throw new Error('GitHub не выдал доступ')
-      const u = await fetch('https://api.github.com/user', { headers: { Authorization: 'Bearer ' + r.access_token, 'User-Agent': 'pytype', Accept: 'application/vnd.github+json' } }).then(r => r.json())
+      const u = await fetch('https://api.github.com/user', { headers: { Authorization: 'Bearer ' + r.access_token, 'User-Agent': 'indentra', Accept: 'application/vnd.github+json' } }).then(r => r.json())
       if (!u.id) throw new Error('GitHub не вернул профиль')
       return { pid: String(u.id), name: u.login || u.name }
     }

@@ -176,4 +176,20 @@ alter table news add column if not exists link text not null default '';
 create table if not exists issues(
   id serial primary key, text text not null, active boolean not null default true, at timestamptz not null default now()
 );
+create table if not exists grps(
+  id serial primary key, name text not null, icon text not null default '👥', descr text not null default '',
+  code text not null unique, owner int references users(id) on delete set null, open boolean not null default true,
+  created_at timestamptz not null default now()
+);
+create table if not exists grp_members(
+  group_id int not null references grps(id) on delete cascade, user_id int not null references users(id) on delete cascade,
+  role text not null default 'member', at timestamptz not null default now(), primary key(group_id, user_id)
+);
+create index if not exists grp_members_u on grp_members(user_id);
+create table if not exists grp_msgs(
+  id serial primary key, group_id int not null references grps(id) on delete cascade, user_id int not null references users(id) on delete cascade,
+  text text not null, at timestamptz not null default now()
+);
+create index if not exists grp_msgs_g on grp_msgs(group_id, id);
+alter table users add column if not exists frz int not null default 0;
 `

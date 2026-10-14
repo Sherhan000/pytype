@@ -326,7 +326,7 @@ App.page('', {
             <a class="tile r" href="#/duel"><b>⚔️</b><strong>Дуэль</strong><span><span data-on>${S.online}</span> онлайн</span></a>
             <a class="tile b" href="#/train"><b>⌨️</b><strong>Тренировка</strong><span>Свой код или файл</span></a>
             <a class="tile p" href="#/puzzles"><b>🧩</b><strong>Головоломки</strong><span>Что выведет код</span></a>
-            <a class="tile c" href="#/chat"><b>💬</b><strong>Чат</strong><span>Общайся с игроками</span></a>
+            <a class="tile c" href="#/groups"><b>👥</b><strong>Группы</strong><span>Свой рейтинг с друзьями</span></a>
             <a class="tile y" href="#/lessons"><b>🎬</b><strong>Видеоуроки</strong><span>Смотри и повторяй</span></a>
             <a class="tile g" href="#/top"><b>🏆</b><strong>Рейтинг</strong><span>Кто быстрее всех</span></a>
             <a class="tile v" href="#/ai"><b>✨</b><strong>ИИ-наставник</strong><span>Разберёт любой код</span></a>
@@ -532,6 +532,7 @@ App.page('train', {
         <div style="flex:1;min-width:200px"><div class="disp" style="font-size:20px" data-tt></div><div class="sm mu">Свой код, файл или наш. Можно на время и по частям</div></div>
         <button class="btn sm" data-b="prev" title="Предыдущий кусок" hidden>${I.prev}</button>
         <button class="btn sm" data-b="rnd">${I.dice}<span class="hide-m">Случайный</span></button>
+        <button class="btn sm" data-b="weak" title="Строки с символами, на которых ты чаще ошибаешься">🎯<span class="hide-m">Мои ошибки</span></button>
         <label class="btn sm y" title="Открой .py, .txt или любой файл с кодом">📂<span>Открыть файл</span><input type="file" hidden data-file accept=".py,.pyw,.txt,.js,.ts,.json,.html,.css,.md,.sql,.java,.c,.cpp,.cs,.go,.rs,.php,.rb,.kt,.swift,.sh,.yml,.yaml,.toml,.ini,text/*"></label>
         <button class="btn sm" data-b="own">${I.plus}<span class="hide-m">Свой код</span></button>
         <button class="btn sm b" data-b="run">${I.play}<span class="hide-m">Запустить</span></button>
@@ -588,6 +589,22 @@ App.page('train', {
     $('[data-b=prev]', v).onclick = () => tr.prev()
     $('[data-b=rnd]', v).onclick = () => { const a = all().filter(x => x.name !== cur.name); pick(a[Math.random() * a.length | 0]) }
     $('[data-b=run]', v).onclick = () => tr.run()
+    $('[data-b=weak]', v).onclick = async () => {
+      if (!S.u) return authBox()
+      let em = {}
+      try { em = (await api('u/' + encodeURIComponent(S.u.name))).u.emap || {} } catch (er) {}
+      const W = Object.entries(em).filter(([k]) => k.trim() && k.length === 1).sort((a, b) => b[1] - a[1]).slice(0, 8)
+      if (W.length < 2) return toast(t('Пока мало данных об ошибках. Пройди пару заходов, и тут появится тренировка именно под тебя'), 'ok', 5000)
+      const wt = Object.fromEntries(W.map(([k], i) => [k, 8 - i]))
+      const seen = new Set()
+      const lines = all().flatMap(s => prep(s.code).split('\n')).map(l => l.trim()).filter(l => l.length > 6 && l.length < 70 && !l.startsWith('#'))
+        .filter(l => !seen.has(l) && seen.add(l))
+        .map(l => [l, [...l].reduce((a, c) => a + (wt[c] || 0), 0) / Math.sqrt(l.length)]).filter(x => x[1] > 0)
+        .sort((a, b) => b[1] - a[1]).slice(0, 14).map(x => x[0])
+      if (!lines.length) return toast(t('Не нашлось подходящих строк'), 'err')
+      pick({ name: t('Работа над ошибками'), code: lines.join('\n') })
+      toast(t('Собрал строки, где чаще всего встречается: {0}', W.slice(0, 5).map(x => sym(x[0])).join(' ')), 'ok', 4500)
+    }
     $('[data-b=own]', v).onclick = () => {
       const m = modal(`<h2>Свой код</h2><p class="mu sm mb">Вставь любой Python или открой файл .py. Сохранённое появится в списке со звёздочкой, удалить можно правым кликом</p>
         <div class="col"><input class="in" data-n placeholder="Название" maxlength="40">
@@ -702,7 +719,9 @@ App.page('shop', {
           ${need > 0 ? `<div class="xs mu">${esc(t('Не хватает {0} 🪙. Пройди пару заданий или дуэль', need))}</div>` : ''}
           <button class="btn sm ghost wide" data-rs>Снять примерку</button>` : ''}
         ${S.u ? `<div class="fit-c"><span>🪙 <b data-c>${S.u.coins}</b></span><span class="xs mu">${esc(t('Куплено {0} из {1}', d.own.length, d.items.filter(i => i.price).length))}</span></div>
-          <p class="xs mu">Монеты дают за задания, звёзды, кубки, дуэли и задания дня</p>` : ''}`
+          <p class="xs mu">Монеты дают за задания, звёзды, кубки, дуэли и задания дня</p>
+          <div class="fz"><span class="fz-i">🧊</span><div class="g"><b>Заморозка огня</b><span class="xs mu">${esc(t('Спасает серию, если пропустишь один день. Есть {0} из 2', S.u.freeze || 0))}</span></div>
+            <button class="btn sm" data-fz ${(S.u.freeze || 0) >= 2 || S.u.coins < d.freeze ? 'disabled' : ''}>${d.freeze} 🪙</button></div>` : ''}`
     }
     function draw() {
       $$('[data-kk]', v).forEach(b => b.classList.toggle('on', b.dataset.kk === k))
@@ -725,6 +744,12 @@ App.page('shop', {
     $('[data-so]', v).onchange = e => { so = e.target.value; draw() }
     $('.shop-w', v).onclick = async e => {
       if (e.target.closest('[data-rs]')) { tr = null; return draw() }
+      const fz = e.target.closest('[data-fz]')
+      if (fz) {
+        fz.disabled = true
+        try { const r = await api('shop/freeze', {}); S.u.coins = r.coins; S.u.freeze = r.freeze; shell(); toast(t('🧊 Заморозка куплена. Теперь один пропуск не погасит огонь'), 'ok'); draw() } catch (er) { toast(er.message, 'err'); fz.disabled = false }
+        return
+      }
       const b = e.target.closest('[data-buy],[data-eq]')
       if (!b) {
         const c = e.target.closest('[data-try]')
@@ -970,6 +995,7 @@ async function profile(v, name) {
         <div class="sm mu" style="margin:2px 0 10px">${u.rank} место в рейтинге, с нами с ${new Date(u.created_at).toLocaleDateString(LOC, { day: 'numeric', month: 'long', year: 'numeric' })}${own ? '' : ', был ' + ago(u.seen_at)}</div>
         ${u.bio ? `<p style="margin-bottom:10px">${esc(u.bio)}</p>` : ''}
         <div class="row sm" style="gap:16px;margin-bottom:12px"><span><b data-fans>${p.fl.fans}</b> <span class="mu">${plw(p.fl.fans, 'подписчик', 'подписчика', 'подписчиков')}</span></span><span><b>${p.fl.subs}</b> <span class="mu">${plw(p.fl.subs, 'подписка', 'подписки', 'подписок')}</span></span><span>🔥 <b>${u.streak}</b> <span class="mu">${plw(u.streak, 'день', 'дня', 'дней')} подряд</span></span></div>
+        ${p.grs?.length ? `<div class="row" style="gap:6px;margin-bottom:12px">${p.grs.map(g => `<a class="chip" href="#/group/${g.id}" data-notr>${esc(g.icon)} ${esc(g.name)}</a>`).join('')}</div>` : ''}
         <div class="row" style="max-width:460px;flex-wrap:nowrap"><span class="xs" style="font-weight:800;white-space:nowrap">Уровень ${L}</span><div class="bar" style="flex:1"><i style="width:${pr}%"></i></div><span class="xs mu">${u.xp} XP</span></div>
       </div>
     </div>
@@ -1070,13 +1096,14 @@ App.page('notes', {
   async render(v) {
     if (!S.u) return needAuth(v, 'уведомления')
     const { rows } = await api('notes')
-    const ic = { follow: '👤', react: '💬', ach: '🏅', duel: '⚔️', tourn: '🏁' }
+    const ic = { follow: '👤', react: '💬', ach: '🏅', duel: '⚔️', tourn: '🏁', gjoin: '👥' }
     const tx = n => {
       const d = n.data || {}
       if (n.kind === 'follow') return `<a href="#/u/${encodeURIComponent(d.name)}"><b>${esc(d.name)}</b></a> подписался на тебя`
       if (n.kind === 'react') return `<b>${esc(d.name)}</b> поставил ${esc(d.e)} на твою запись в ленте`
       if (n.kind === 'ach') return `Новое достижение <b>${esc(d.t)}</b> <span class="nw">+${d.r} 🪙</span>`
       if (n.kind === 'duel') return `<b>${esc(d.name)}</b> вызвал тебя на дуэль`
+      if (n.kind === 'gjoin') return `<b>${esc(d.name)}</b> ${esc(t('вступил в твою группу'))} <a href="#/group/${d.id}"><b>${esc(d.g)}</b></a>`
       if (n.kind === 'tourn') return esc(t('Турнир недели «{0}» закончился: {1} место из {2}, +{3} 🪙', d.t, d.p, d.n, d.c))
       return esc(n.kind)
     }

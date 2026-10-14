@@ -16,7 +16,7 @@ export async function initPush() {
       ;({ pub, priv } = again.v)
     }
   }
-  webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:admin@pytype.app', pub, priv)
+  webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:admin@indentra.app', pub, priv)
   KEY = pub
 }
 
@@ -35,7 +35,7 @@ export async function push(uid, kind, data = {}) {
   const subs = await db.q('select endpoint, sub, lang from push where user_id=$1', [uid])
   for (const s of subs) {
     const f = TX[kind][s.lang] || TX[kind].ru
-    const body = JSON.stringify({ title: 'pytype', body: f(data), url: URL_[kind](data), tag: kind })
+    const body = JSON.stringify({ title: 'Indentra', body: f(data), url: URL_[kind](data), tag: kind })
     try {
       await webpush.sendNotification(s.sub, body, { TTL: kind === 'duel' ? 300 : 86400 })
     } catch (e) {

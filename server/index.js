@@ -21,6 +21,7 @@ import oauth from './oauth.js'
 import { setIo, bump, check, feed, note, questList, claim, feedList, react, ACH, lvl } from './social.js'
 import { initPush, pushKey, remindStreaks } from './push.js'
 import * as tourn from './tourn.js'
+import groups from './groups.js'
 
 const dir = path.dirname(fileURLToPath(import.meta.url))
 const PORT = process.env.PORT || 3000
@@ -185,14 +186,23 @@ app.patch('/api/me', need, async (req, res) => {
 })
 
 app.post('/api/daily', need, async (req, res) => {
+  const fz = (await db.one('select (daily_at = current_date - 2 and frz > 0) f from users where id=$1', [req.u.id]))?.f
   const r = await db.one(`update users set
-    coins = coins + $2 + case when daily_at = current_date - 1 then least(streak, 6) * 5 else 0 end,
-    streak = case when daily_at = current_date - 1 then streak + 1 else 1 end,
+    coins = coins + $2 + case when daily_at >= current_date - $3::int then least(streak, 6) * 5 else 0 end,
+    streak = case when daily_at >= current_date - $3::int then streak + 1 else 1 end,
+    frz = frz - $3::int + 1,
     daily_at = current_date
-    where id=$1 and (daily_at is null or daily_at < current_date) returning coins, streak`, [req.u.id, cfg.daily])
+    where id=$1 and (daily_at is null or daily_at < current_date) returning coins, streak, frz`, [req.u.id, cfg.daily, fz ? 2 : 1])
   if (!r) return res.status(400).json({ e: 'Бонус уже забран, приходи завтра' })
   check(req.u.id).catch(() => {})
-  res.json({ coins: r.coins, streak: r.streak, gain: cfg.daily + Math.min(r.streak - 1, 6) * 5 })
+  res.json({ coins: r.coins, streak: r.streak, freeze: r.frz, saved: !!fz, gain: cfg.daily + Math.min(r.streak - 1, 6) * 5 })
+})
+
+const FREEZE = 80
+app.post('/api/shop/freeze', need, async (req, res) => {
+  const r = await db.one('update users set coins=coins-$2, frz=frz+1 where id=$1 and coins>=$2 and frz<2 returning coins, frz freeze', [req.u.id, FREEZE])
+  if (!r) return res.status(400).json({ e: req.u.frz >= 2 ? 'Больше двух заморозок держать нельзя' : 'Не хватает монет' })
+  res.json(r)
 })
 
 async function opened(u, lid) {
@@ -634,7 +644,7 @@ app.get('/api/top', async (req, res) => {
 })
 
 app.get('/api/u/:name', async (req, res) => {
-  const u = await db.one(`select id,name,role,xp,best_wpm,avatar,frame,title,ncolor,bio,(case when daily_at >= current_date - 1 then streak else 0 end) streak,created_at,seen_at,emap,duel_w,duel_l,
+  const u = await db.one(`select id,name,role,xp,best_wpm,avatar,frame,title,ncolor,bio,(case when daily_at >= current_date - 1 or (daily_at = current_date - 2 and frz > 0) then streak else 0 end) streak,created_at,seen_at,emap,duel_w,duel_l,
     (select count(*)::int + 1 from users x where x.xp > users.xp and not x.banned) rank
     from users where lower(name)=lower($1) and not banned`, [String(req.params.name)])
   if (!u) return res.status(404).json({ e: 'Пользователь не найден' })
@@ -652,13 +662,15 @@ app.get('/api/u/:name', async (req, res) => {
   const ach = ACH.map(a => ({ ...a, at: got.find(g => g.code === a.k)?.at || null }))
   const pc = await db.one('select count(*)::int n, count(*) filter (where best_wpm < $1)::int s from users where best_wpm > 0 and not banned and id<>$2', [u.best_wpm, u.id])
   const fast = u.best_wpm && pc.n ? Math.round(pc.s / pc.n * 100) : null
-  res.json({ u, cups, recent, st: { ...st, ms: +st.ms }, own, fl, isf, ach, fast })
+  const grs = await db.q(`select g.id,g.name,g.icon from grp_members m join grps g on g.id=m.group_id
+    where m.user_id=$1 and (g.open or exists (select 1 from grp_members x where x.group_id=g.id and x.user_id=$2)) order by m.at limit 10`, [u.id, req.u?.id || 0])
+  res.json({ u, cups, recent, st: { ...st, ms: +st.ms }, own, fl, isf, ach, fast, grs })
 })
 
 app.get('/api/shop', async (req, res) => {
   const items = await db.q('select id,kind,name,value,price from items where active order by kind,ord,price')
   const own = req.u ? (await db.q('select item_id from inv where user_id=$1', [req.u.id])).map(x => x.item_id) : []
-  res.json({ items, own })
+  res.json({ items, own, freeze: FREEZE })
 })
 
 const SLOT = { avatar: 'avatar', frame: 'frame', title: 'title', theme: 'theme', color: 'ncolor' }
@@ -824,6 +836,7 @@ app.post('/api/push/unsub', need, async (req, res) => {
 
 const ctx = { app, io, db, cfg, need, adm, modr, ask, feed, note, bump, check }
 admin(app, ctx)
+groups(app, { need })
 chat(io)
 duel(io)
 
@@ -855,4 +868,4 @@ const jobs = () => {
 setTimeout(jobs, 5000).unref()
 setInterval(jobs, 10 * 60e3).unref()
 
-srv.listen(PORT, () => console.log('pytype запущен: http://localhost:' + PORT))
+srv.listen(PORT, () => console.log('Indentra запущен: http://localhost:' + PORT))

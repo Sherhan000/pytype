@@ -72,6 +72,7 @@ function ask(text, ok = 'Да', cls = 'pri') {
   })
 }
 
+const LOGO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M5 6h11M9 12h10M9 18h7"/><path d="M5 10.5v7.5" stroke-width="2" opacity=".55"/></svg>'
 const sv = p => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`
 const I = {
   home: sv('<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>'),
@@ -115,6 +116,7 @@ const I = {
   globe: sv('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>'),
   puzzle: sv('<path d="M10 3h4v3a2 2 0 1 0 4 0V3h3v7h-3a2 2 0 1 0 0 4h3v7h-7v-3a2 2 0 1 0-4 0v3H3v-7h3a2 2 0 1 0 0-4H3V3z"/>'),
   search: sv('<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>'),
+  users: sv('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/>'),
   ghost: sv('<path d="M5 21V10a7 7 0 0 1 14 0v11l-2.5-2-2.3 2-2.2-2-2.2 2-2.3-2zM9.5 10h.01M14.5 10h.01"/>')
 }
 
@@ -140,6 +142,7 @@ function confetti(n = 140) {
   document.body.append(c)
   const x = c.getContext('2d'), W = c.width = innerWidth, H = c.height = innerHeight
   const cols = ['#ffd43b', '#ff9f43', '#4c8dff', '#a98bff', '#36d49a', '#ff6b6b']
+  n = Math.round(n * .6)
   const p = Array.from({ length: n }, () => ({ x: W / 2 + (Math.random() - .5) * 200, y: H * .45, vx: (Math.random() - .5) * 16, vy: -Math.random() * 16 - 4, r: Math.random() * 7 + 5, c: cols[Math.random() * cols.length | 0], a: Math.random() * 6, va: (Math.random() - .5) * .3 }))
   let f = 0
   ;(function loop() {
@@ -161,11 +164,12 @@ const App = {
     { r: 'puzzles', t: 'Головоломки', i: 'puzzle' },
     { r: 'train', t: 'Тренировка', i: 'kb' },
     { r: 'lessons', t: 'Видеоуроки', i: 'film' },
-    { r: 'duel', t: 'Дуэли', i: 'swords' },
+    { r: 'duel', t: 'Дуэли', i: 'swords', s: 'Вместе' },
+    { r: 'groups', t: 'Группы', i: 'users' },
     { r: 'tourn', t: 'Турнир', i: 'flag' },
     { r: 'top', t: 'Рейтинг', i: 'trophy' },
-    { r: 'analytics', t: 'Аналитика', i: 'chart' },
     { r: 'chat', t: 'Чат', i: 'chat', m: 1 },
+    { r: 'analytics', t: 'Аналитика', i: 'chart', s: 'Ещё' },
     { r: 'shop', t: 'Магазин', i: 'bag' },
     { r: 'ai', t: 'ИИ-наставник', i: 'spark' },
     { r: 'news', t: 'Что нового', i: 'news' },
@@ -179,15 +183,15 @@ const App = {
   emit(t, d) { this.ev.dispatchEvent(new CustomEvent(t, { detail: d })) }
 }
 
-function setTitle(s) { s = t(s); const e = $('#top h1'); if (e) e.textContent = s; document.title = s + ' · ' + (S.cfg.site || 'pytype') }
+function setTitle(s) { s = t(s); const e = $('#top h1'); if (e) e.textContent = s; document.title = s + ' · ' + (S.cfg.site || 'Indentra') }
 
 function shell() {
   const u = S.u, cur = S.page.split('/')[0]
-  const on = r => cur === r || (r === 'lessons' && cur === 'lesson') || (r === 'path' && (cur === 'task' || cur === 'leagues')) || (r === 'me' && (cur === 'notes' || cur === 'stats'))
+  const on = r => cur === r || (r === 'lessons' && cur === 'lesson') || (r === 'groups' && (cur === 'group' || cur === 'gj')) || (r === 'path' && (cur === 'task' || cur === 'leagues')) || (r === 'me' && (cur === 'notes' || cur === 'stats'))
   const vis = App.nav.filter(n => !n.role || n.role.includes(u?.role))
   $('#side').innerHTML = `
-    <a href="#/" class="logo"><i>py</i><b>${esc(S.cfg.site || 'pytype')}</b></a>
-    ${vis.map(n => `<a class="nav ${on(n.r) ? 'on' : ''}" href="#/${n.r}">${I[n.i] || ''}<span>${n.t}</span>${n.r === 'chat' && S.unread ? `<span class="bd">${S.unread > 99 ? '99+' : S.unread}</span>` : ''}</a>`).join('')}
+    <a href="#/" class="logo"><i>${LOGO}</i><b>${esc(S.cfg.site || 'Indentra')}</b></a>
+    ${vis.map(n => `${n.s ? `<div class="nav-s">${n.s}</div>` : ''}<a class="nav ${on(n.r) ? 'on' : ''}" href="#/${n.r}">${I[n.i] || ''}<span>${n.t}</span>${n.r === 'chat' && S.unread ? `<span class="bd">${S.unread > 99 ? '99+' : S.unread}</span>` : ''}</a>`).join('')}
     <div class="grow"></div>
     <button class="btn pri lg play" data-act="play">${I.play} Играть</button>
     ${u ? '' : `<button class="btn b" data-act="auth">Войти</button>`}`
@@ -195,10 +199,10 @@ function shell() {
   $('#tabbar').innerHTML = tb.slice(0, 2).map(tab).join('') + `<button class="fab" data-act="play" aria-label="Играть">${I.play}</button>` + tb.slice(2).map(tab).join('')
   function tab(n) { return `<a class="${on(n.r) ? 'on' : ''}" href="#/${n.r}">${I[n.i]}<span>${n.t}</span>${n.r === 'chat' && S.unread ? '<i class="bd"></i>' : ''}${n.r === 'me' && S.notes ? '<i class="bd"></i>' : ''}${n.r === '' && u?.can_daily ? '<i class="bd y"></i>' : ''}</a>` }
   const t = $('#top h1')?.textContent || ''
-  $('#top').innerHTML = `<a href="#/" class="mlogo">py</a><h1>${esc(t)}</h1><span class="sp"></span>
+  $('#top').innerHTML = `<a href="#/" class="mlogo">${LOGO}</a><h1>${esc(t)}</h1><span class="sp"></span>
     <button class="tb-find" data-act="find" title="Поиск (Ctrl+K)">${I.search}<span>Поиск</span><kbd>Ctrl K</kbd></button>
     ${u ? `${u.can_daily ? `<button class="btn sm y tb-daily" data-act="daily">${I.gift}<span class="hide-m">Бонус</span></button>` : ''}
-      <a class="pill fire ${u.can_daily ? 'off' : ''}" href="#/me" title="Дней подряд">🔥 ${u.streak || 0}</a>
+      <a class="pill fire ${u.can_daily ? 'off' : ''}" href="#/me" title="Дней подряд">🔥 ${u.streak || 0}${u.freeze ? `<small class="fzb">🧊${u.freeze > 1 ? u.freeze : ''}</small>` : ''}</a>
       <a class="pill coin" href="#/shop" title="Монеты">🪙 ${u.coins}</a>
       <a class="ib" href="#/notes" title="Уведомления">${I.bell}${S.notes ? `<span class="dotr">${S.notes > 9 ? '9+' : S.notes}</span>` : ''}</a>` : ''}
     <button class="ib ${u ? 'hide-m' : ''}" data-act="lang" title="Язык">${I.globe}</button>
@@ -218,8 +222,9 @@ function theme() {
 async function daily() {
   try {
     const r = await api('daily', {})
-    S.u.coins = r.coins; S.u.streak = r.streak; S.u.can_daily = false
+    S.u.coins = r.coins; S.u.streak = r.streak; S.u.can_daily = false; S.u.freeze = r.freeze
     toast(`+${r.gain} 🪙 за вход. Огонь горит ${pl(r.streak, 'день', 'дня', 'дней')}`, 'coin')
+    if (r.saved) setTimeout(() => toast(t('🧊 Вчера ты пропустил день, но заморозка спасла огонь'), 'ok', 5000), 700)
     confetti(80)
     shell()
     App.emit('user')
@@ -272,7 +277,7 @@ function oaBtns() {
 function authBox(tab = 'login') {
   if (!S.cfg.reg && tab === 'reg') tab = 'login'
   const m = modal(`
-    <div style="text-align:center;margin-bottom:16px"><div class="logo" style="justify-content:center;padding:4px 0 14px"><i>py</i></div>
+    <div style="text-align:center;margin-bottom:16px"><div class="logo" style="justify-content:center;padding:4px 0 14px"><i>${LOGO}</i></div>
     <h2 data-at></h2><p class="mu sm">Прогресс, кубки и монеты хранятся в аккаунте</p></div>
     <div class="tabs" style="width:100%;margin-bottom:16px;display:flex"><button data-t="login" style="flex:1">Вход</button><button data-t="reg" style="flex:1">Регистрация</button></div>
     <form class="col" data-af>

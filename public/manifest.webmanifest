@@ -1,6 +1,6 @@
 {
-  "name": "pytype",
-  "short_name": "pytype",
+  "name": "Indentra",
+  "short_name": "Indentra",
   "description": "Тренажёр скоростной печати кода на Python",
   "start_url": "/",
   "display": "standalone",

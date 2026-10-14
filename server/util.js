@@ -1,7 +1,7 @@
 import { db } from './db.js'
 
 export const DEF = {
-  site: 'pytype',
+  site: 'Indentra',
   reg: true,
   daily: 25,
   practice: true,
@@ -28,6 +28,7 @@ function merge(a, b) {
 export async function loadCfg() {
   const r = await db.one("select v from kv where k='cfg'")
   if (r) merge(cfg, r.v)
+  if (cfg.site === 'pytype') await saveCfg({ site: 'Indentra' })
 }
 
 export async function saveCfg(v) {
@@ -63,7 +64,7 @@ setInterval(() => {
 export const pu = u => u && {
   id: u.id, name: u.name, role: u.role, coins: u.coins, xp: u.xp, best_wpm: u.best_wpm,
   avatar: u.avatar, frame: u.frame, title: u.title, theme: u.theme, ncolor: u.ncolor, bio: u.bio,
-  streak: u.st_live ?? u.streak, can_daily: !!u.can_daily, duel_w: u.duel_w || 0, duel_l: u.duel_l || 0, created_at: u.created_at, muted_until: u.muted_until
+  streak: u.st_live ?? u.streak, can_daily: !!u.can_daily, freeze: u.frz || 0, duel_w: u.duel_w || 0, duel_l: u.duel_l || 0, created_at: u.created_at, muted_until: u.muted_until
 }
 
 export const expChars = c => String(c || '')
@@ -72,4 +73,4 @@ export const expChars = c => String(c || '')
   .replace(/\n{3,}/g, '\n\n').trim()
   .split('\n').map(l => l.trimStart()).join('\n').length
 
-export const uSel = `select *, (daily_at is null or daily_at < current_date) as can_daily, (case when daily_at >= current_date - 1 then streak else 0 end) as st_live from users`
+export const uSel = `select *, (daily_at is null or daily_at < current_date) as can_daily, (case when daily_at >= current_date - 1 or (daily_at = current_date - 2 and frz > 0) then streak else 0 end) as st_live from users`

@@ -151,6 +151,7 @@ export async function feedList(me, scope) {
   let w = ''
   if (scope === 'friends' && me) { p.push(me); w = 'where e.user_id=$1 or e.user_id in (select followee from follows where follower=$1)' }
   else if (/^\d+$/.test(scope || '')) { p.push(+scope); w = 'where e.user_id=$1' }
+  else if (/^g\d+$/.test(scope || '')) { p.push(+scope.slice(1)); w = 'where e.user_id in (select user_id from grp_members where group_id=$1)' }
   const rows = await db.q(`select e.id,e.kind,e.data,e.created_at,e.user_id,u.name,u.avatar,u.frame,u.ncolor,u.title
     from events e join users u on u.id=e.user_id ${w} order by e.id desc limit 40`, p)
   if (!rows.length) return []

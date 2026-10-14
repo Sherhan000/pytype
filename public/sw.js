@@ -1,5 +1,5 @@
-const V = 'pytype-v7'
-const SHELL = ['/', '/css/app.css', '/js/i18n.js', '/js/i18n-dict.js', '/js/core.js', '/js/find.js', '/js/trainer.js', '/js/pages.js', '/js/kinds.js', '/js/stats.js', '/js/tourn.js', '/js/insights.js', '/js/duel.js', '/js/push.js', '/js/admin.js', '/js/lessons.js', '/js/ext.js', '/socket.io/socket.io.js', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png']
+const V = 'indentra-v8'
+const SHELL = ['/', '/css/app.css', '/js/i18n.js', '/js/i18n-dict.js', '/js/core.js', '/js/find.js', '/js/trainer.js', '/js/pages.js', '/js/kinds.js', '/js/stats.js', '/js/tourn.js', '/js/insights.js', '/js/duel.js', '/js/push.js', '/js/admin.js', '/js/lessons.js', '/js/groups.js', '/js/ext.js', '/socket.io/socket.io.js', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png']
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()))
@@ -29,7 +29,7 @@ self.addEventListener('fetch', e => {
 self.addEventListener('push', e => {
   let d = {}
   try { d = e.data ? e.data.json() : {} } catch (er) { d = { body: e.data ? e.data.text() : '' } }
-  e.waitUntil(self.registration.showNotification(d.title || 'pytype', {
+  e.waitUntil(self.registration.showNotification(d.title || 'Indentra', {
     body: d.body || '', icon: '/icon-192.png', badge: '/icon-192.png', tag: d.tag || undefined, renotify: !!d.tag, data: { url: d.url || '/' }
   }))
 })
